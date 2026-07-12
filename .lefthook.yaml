@@ -1,0 +1,29 @@
+no_auto_install: true
+
+pre-commit:
+  commands:
+    staged-checks:
+      run: scripts/pre-commit-check.sh
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  parallel: true
+  commands:
+    typecheck-web:
+      glob: '**/*.{ts,tsx}'
+      root: 'apps/web/'
+      run: pnpm run typecheck
+
+    typecheck-service:
+      glob: '**/*.ts'
+      root: 'apps/service/'
+      run: pnpm run typecheck
+
+    test-service:
+      glob: '**/*.ts'
+      root: 'apps/service/'
+      run: pnpm run test

@@ -1,0 +1,28 @@
+{
+  "name": "staff-report",
+  "private": true,
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,yml,yaml,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,yml,yaml,md}\"",
+    "prepare": "if [ -f scripts/install-lefthook.sh ]; then scripts/install-lefthook.sh; fi"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@commitlint/types": "^20.5.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^11.7.1",
+    "lefthook": "^2.1.6",
+    "prettier": "^3.4.2",
+    "secretlint": "^11.7.1"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+.claude
+.serena
+pnpm-lock.yaml
+generated
+openapi.json

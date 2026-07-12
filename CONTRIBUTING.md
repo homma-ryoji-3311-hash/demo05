@@ -42,7 +42,6 @@ pnpm format       # Prettier 整形
 - `main` から作業ブランチを切る。`main` へ直接コミットせず、変更は Pull Request 経由でマージする。
 - 形式: `<type>/<短い説明>`（例: `feature/greeting-screen`, `fix/auth-401`）。
   - **ブランチ名は半角英数字とハイフンのみ。日本語は使わない**（説明部分は英語 kebab-case）。
-  - 課題キーの付与は任意（Jira の「ブランチを作成」から作ると自動で `SRP-<番号>` 入りになる。入れておくと連携がより確実）。
 
 ## Jira 連携
 

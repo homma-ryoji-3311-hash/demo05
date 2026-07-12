@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./index.mjs",
-    "./architecture": "./architecture.mjs",
+    "./architecture-backend": "./architecture-backend.mjs",
     "./architecture-frontend": "./architecture-frontend.mjs"
   },
   "dependencies": {

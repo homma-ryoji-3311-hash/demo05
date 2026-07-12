@@ -1,13 +1,14 @@
 /**
- * staff-report アーキテクチャルール
+ * staff-report バックエンド（apps/service）向けアーキテクチャルール
  *
  * フィーチャーファースト + クリーンアーキテクチャ（非DDD）のモノリス向け。
- * マイクロサービス的なサービス間分離の代わりに、フィーチャー間分離を強制する。
+ * マイクロサービス的なサービス間分離の代わりに、フィーチャー間分離＋レイヤー依存方向を強制する。
+ * （フロントエンド向けは architecture-frontend.mjs を参照）
  *
  * 使い方:
  *   import { createConfig } from '@staff-report/eslint-config';
- *   import { createArchitectureConfig } from '@staff-report/eslint-config/architecture';
- *   export default [...createConfig(import.meta.dirname), ...createArchitectureConfig()];
+ *   import { createBackendArchitectureConfig } from '@staff-report/eslint-config/architecture-backend';
+ *   export default [...createConfig(import.meta.dirname), ...createBackendArchitectureConfig()];
  */
 import { layerDependencyRestriction } from './rules/layer-dependency-restriction.mjs';
 import { noCrossFeatureImport } from './rules/no-cross-feature-import.mjs';
@@ -33,7 +34,7 @@ const plugin = {
   },
 };
 
-export function createArchitectureConfig() {
+export function createBackendArchitectureConfig() {
   return [
     {
       name: 'staff-report-architecture-rules',

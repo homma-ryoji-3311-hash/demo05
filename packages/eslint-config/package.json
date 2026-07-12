@@ -1,0 +1,18 @@
+{
+  "name": "@staff-report/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.mjs",
+    "./architecture": "./architecture.mjs",
+    "./architecture-frontend": "./architecture-frontend.mjs"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.25.0",
+    "eslint": "^9.25.0",
+    "eslint-config-prettier": "^10.1.2",
+    "globals": "^15.15.0",
+    "typescript-eslint": "^8.31.0"
+  }
+}

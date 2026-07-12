@@ -1,0 +1,39 @@
+name: Lint Workflows
+
+# ワークフロー/アクション定義自体の健全性チェック。
+# - actionlint: GitHub Actions の構文・型チェック
+# - pinact: action が SHA 固定されているか検証（reviewdog で PR にレビュー投稿）
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: reviewdog/action-actionlint@6fb7acc99f4a1008869fa8a0f09cfca740837d9d # v1.72.0
+        with:
+          reporter: github-pr-review
+          fail_level: error
+
+  pinact:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
+        with:
+          # コミットは push せず、未固定の action を reviewdog で PR に指摘するだけ
+          skip_push: 'true'
+          review: 'true'

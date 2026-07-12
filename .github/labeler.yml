@@ -1,0 +1,24 @@
+# 変更パスに応じて PR へ自動付与するラベル定義（actions/labeler v6）
+web:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/web/**'
+
+service:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/service/**'
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: '.github/**'
+
+deps:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'pnpm-lock.yaml'
+          - '**/package.json'

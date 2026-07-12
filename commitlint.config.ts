@@ -4,8 +4,8 @@ import type { UserConfig } from '@commitlint/types';
 // 英語の技術用語・識別子の混在は許容し、説明が日本語で書かれていることだけを担保する。
 const JAPANESE_PATTERN = /[぀-ゟ゠-ヿ々㐀-鿿ｦ-ﾝー〜]/;
 
-// subject 末尾に Jira 課題キーを [KAN-<番号>] の形で必須にする。
-const JIRA_KEY_PATTERN = /\[KAN-\d+\]$/;
+// subject 末尾に Jira 課題キーを [SRP-<番号>] の形で必須にする。
+const JIRA_KEY_PATTERN = /\[SRP-\d+\]$/;
 
 const config: UserConfig = {
   extends: ['@commitlint/config-conventional'],
@@ -18,7 +18,7 @@ const config: UserConfig = {
         ],
         'subject-jira-key': ({ subject }) => [
           JIRA_KEY_PATTERN.test(subject ?? ''),
-          'subject の末尾に Jira 課題キーを [KAN-<番号>] の形で付けてください（例: greeting 画面を追加 [KAN-2]）',
+          'subject の末尾に Jira 課題キーを [SRP-<番号>] の形で付けてください（例: greeting 画面を追加 [SRP-2]）',
         ],
       },
     },

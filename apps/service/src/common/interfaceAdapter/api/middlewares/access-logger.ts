@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { pinoHttp } from 'pino-http';
 import type { Request, RequestHandler, Response } from 'express';
 import { accessLogger, getRequestContext } from '../../../logging/index.js';
@@ -45,7 +46,8 @@ function withFormattedDuration(val: Record<string, unknown>): Record<string, unk
 export function createAccessLogger(): RequestHandler {
   const middleware = pinoHttp({
     logger: accessLogger,
-    genReqId: (req) => getRequestContext()?.requestId ?? String(req.id),
+    // request_id は requestContext（AsyncLocalStorage）由来の文字列。無ければ採番する。
+    genReqId: () => getRequestContext()?.requestId ?? randomUUID(),
     redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
     // メッセージ（既定の "request completed" 等）は出さない。相関 ID は request_id（mixin）に集約する。
     customSuccessMessage: () => '',
@@ -56,8 +58,9 @@ export function createAccessLogger(): RequestHandler {
     serializers: {
       req(req) {
         // id（= request_id）は req 内に出す。top-level の request_id はアクセスログでは付与しない。
+        // req.id は型上 object を含むため、文字列である requestId を直接使う（[object Object] 回避）。
         const raw = (req.raw ?? req) as Request;
-        return { id: req.id, method: raw.method, url: raw.url, body: raw.body as unknown };
+        return { id: getRequestContext()?.requestId, method: raw.method, url: raw.url, body: raw.body as unknown };
       },
       res(res) {
         const raw = (res.raw ?? res) as Response & { [RESPONSE_BODY]?: unknown };

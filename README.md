@@ -26,7 +26,7 @@ report/                    # ドメイン単位（業務報告）
 │   ├── model/             # エンティティ（XxxDomainEntity、依存なし）
 │   ├── error/             # 業務固有のドメインエラー（1クラス1ファイル）
 │   └── repository/        # リポジトリインターフェース
-├── usecases/              # ユースケース（domainのみに依存）
+├── use-case/              # ユースケース（domainのみに依存）
 ├── infra/
 │   └── repository/        # リポジトリ具象クラス
 └── interfaceAdapter/      # インバウンドのアダプター（外部からの受付）

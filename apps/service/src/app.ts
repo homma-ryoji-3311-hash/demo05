@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
-import { GetGreetingUseCase } from './template/usecases/getGreeting.js';
+import { GetGreetingUseCase } from './template/use-case/getGreeting.js';
 import { GreetingController } from './template/interfaceAdapter/api/controller/greetingController.js';
 import { createGreetingRouter } from './template/interfaceAdapter/api/route/greetingRoute.js';
 import type { GreetingRepositoryInterface } from './template/domain/interface/greetingRepository.js';

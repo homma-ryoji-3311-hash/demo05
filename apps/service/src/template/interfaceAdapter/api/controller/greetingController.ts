@@ -1,4 +1,4 @@
-import type { GetGreetingUseCase } from '../../../usecases/getGreeting.js';
+import type { GetGreetingUseCase } from '../../../use-case/getGreeting.js';
 import type { HandlerResult } from '../../../../common/interfaceAdapter/api/openapi/registerRoute.js';
 import type { Greeting } from '../contract/greetingContract.js';
 

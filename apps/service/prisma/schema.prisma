@@ -27,11 +27,14 @@ model User {
 }
 
 model Report {
-  id         String @id
-  userId     String @map("user_id")
-  reportDate String @map("report_date")
-  rawText    String @map("raw_text")
-  status     String
+  id               String @id
+  userId           String @map("user_id")
+  reportDate       String @map("report_date")
+  rawText          String @map("raw_text")
+  status           String
+  // slice-02 AI 要約 / slice-03 確定要約（固定スキーマ 4カテゴリ）。適用は統合役（CLAUDE.md §1-2）。
+  aiSummaryJson    Json?  @map("ai_summary_json")
+  confirmedSummary Json?  @map("confirmed_summary")
 
   @@map("reports")
 }

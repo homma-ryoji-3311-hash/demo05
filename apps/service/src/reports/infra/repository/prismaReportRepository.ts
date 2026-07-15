@@ -1,5 +1,6 @@
 import type { PrismaService } from '../../../common/infra/prisma/prismaService.js';
-import { ReportEntity, type ReportStatus } from '../../domain/model/report.js';
+import { Prisma } from '../../../generated/prisma/client.js';
+import { ReportEntity, type ReportStatus, type StructuredSummary } from '../../domain/model/report.js';
 import type { ReportRepositoryInterface } from '../../domain/interface/reportRepository.js';
 
 /**
@@ -11,10 +12,20 @@ export class PrismaReportRepository implements ReportRepositoryInterface {
 
   async save(report: ReportEntity): Promise<void> {
     const p = report.toPersistence();
+    const ai = toJsonInput(p.aiSummaryJson);
+    const confirmed = toJsonInput(p.confirmedSummary);
     await this.prisma.report.upsert({
       where: { id: p.id },
-      create: { id: p.id, userId: p.userId, reportDate: p.reportDate, rawText: p.rawText, status: p.status },
-      update: { rawText: p.rawText, status: p.status },
+      create: {
+        id: p.id,
+        userId: p.userId,
+        reportDate: p.reportDate,
+        rawText: p.rawText,
+        status: p.status,
+        aiSummaryJson: ai,
+        confirmedSummary: confirmed,
+      },
+      update: { rawText: p.rawText, status: p.status, aiSummaryJson: ai, confirmedSummary: confirmed },
     });
   }
 
@@ -28,12 +39,27 @@ export class PrismaReportRepository implements ReportRepositoryInterface {
     return r ? this.toEntity(r) : null;
   }
 
+  async findByUser(userId: string): Promise<ReportEntity[]> {
+    const rows = await this.prisma.report.findMany({ where: { userId }, orderBy: { reportDate: 'desc' } });
+    return rows.map((r) => this.toEntity(r));
+  }
+
+  async findLatestConfirmedByUser(userId: string, exceptId: string): Promise<ReportEntity | null> {
+    const r = await this.prisma.report.findFirst({
+      where: { userId, status: 'confirmed', id: { not: exceptId } },
+      orderBy: { reportDate: 'desc' },
+    });
+    return r ? this.toEntity(r) : null;
+  }
+
   private toEntity(r: {
     id: string;
     userId: string;
     reportDate: string;
     rawText: string;
     status: string;
+    aiSummaryJson: unknown;
+    confirmedSummary: unknown;
   }): ReportEntity {
     return ReportEntity.reconstruct({
       id: r.id,
@@ -41,6 +67,13 @@ export class PrismaReportRepository implements ReportRepositoryInterface {
       reportDate: r.reportDate,
       rawText: r.rawText,
       status: r.status as ReportStatus,
+      aiSummaryJson: (r.aiSummaryJson as StructuredSummary | null) ?? null,
+      confirmedSummary: (r.confirmedSummary as StructuredSummary | null) ?? null,
     });
   }
+}
+
+/** nullable Json カラムへの書き込み値。null は DB NULL（Prisma.DbNull）に変換する。 */
+function toJsonInput(value: StructuredSummary | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  return value === null ? Prisma.DbNull : (value as unknown as Prisma.InputJsonValue);
 }

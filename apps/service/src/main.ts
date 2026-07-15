@@ -6,6 +6,9 @@ import { GreetingRepository } from './template/infra/repository/greetingReposito
 import type { ReportRepositoryInterface } from './reports/domain/interface/reportRepository.js';
 import { PrismaReportRepository } from './reports/infra/repository/prismaReportRepository.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
+import type { UserRepositoryInterface } from './auth/domain/interface/userRepository.js';
+import { PrismaUserRepository } from './auth/infra/repository/prismaUserRepository.js';
+import { InMemoryUserRepository, seedUsers } from './auth/infra/repository/inMemoryUserRepository.js';
 
 const env = loadEnv();
 
@@ -19,19 +22,25 @@ const persistence = process.env.PERSISTENCE === 'memory' ? 'memory' : 'prisma';
 const prisma = new PrismaService(env.DATABASE_URL);
 
 let reportRepository: ReportRepositoryInterface;
+let userRepository: UserRepositoryInterface;
 if (persistence === 'prisma') {
   await prisma.connect();
   reportRepository = new PrismaReportRepository(prisma);
+  userRepository = new PrismaUserRepository(prisma);
 } else {
   const mem = new InMemoryReportRepository();
   seedReports(mem);
   reportRepository = mem;
-  appLogger.info('persistence=memory: InMemoryReportRepository で起動（DB 接続なし）');
+  const userMem = new InMemoryUserRepository();
+  seedUsers(userMem);
+  userRepository = userMem;
+  appLogger.info('persistence=memory: InMemory{Report,User}Repository で起動（DB 接続なし）');
 }
 
 const app = createApp({
   greetingRepository: new GreetingRepository(prisma),
   reportRepository,
+  userRepository,
 });
 
 const server = app.listen(env.PORT, () => {

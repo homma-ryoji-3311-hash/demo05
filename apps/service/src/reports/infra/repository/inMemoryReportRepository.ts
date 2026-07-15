@@ -24,12 +24,27 @@ export class InMemoryReportRepository implements ReportRepositoryInterface {
     }
     return null;
   }
+
+  async findByUser(userId: string): Promise<ReportEntity[]> {
+    return [...this.records.values()]
+      .filter((r) => r.userId === userId)
+      .sort((a, b) => (a.reportDate < b.reportDate ? 1 : -1)) // report_date 降順
+      .map((r) => ReportEntity.reconstruct(r));
+  }
+
+  async findLatestConfirmedByUser(userId: string, exceptId: string): Promise<ReportEntity | null> {
+    const prev = [...this.records.values()]
+      .filter((r) => r.userId === userId && r.status === 'confirmed' && r.id !== exceptId)
+      .sort((a, b) => (a.reportDate < b.reportDate ? 1 : -1))[0];
+    return prev ? ReportEntity.reconstruct(prev) : null;
+  }
 }
 
 /**
- * dev/受け入れ用のシード（合成データのみ）。
- * - r_seed_confirmed: AC-3（確定後不変 → 409）検証用の確定済み報告。
- * - r_seed_draft:     S3 の「再訪時に下書きが復元される」（ui.spec）検証用の下書き。
+ * dev/受け入れ用のシード（合成データのみ）。オラクル(tools/reference-mock-server/server.mjs)と同一。
+ * - r_seed_confirmed: staff01 の確定済み報告。AC-3（確定後不変 → 409）と slice-05 前回参照の対象。
+ * - r_seed_draft:     staff01 の下書き。S3 の「再訪時に下書きが復元される」（ui.spec）検証用。
+ * - r_other:          staff02 が所有する確定済み報告。所有権 403（slice-04/06）の対象。
  */
 export function seedReports(repo: InMemoryReportRepository): void {
   void repo.save(
@@ -39,6 +54,8 @@ export function seedReports(repo: InMemoryReportRepository): void {
       reportDate: '2026-07-13',
       rawText: '前々日はテスト整備を実施。',
       status: 'confirmed',
+      aiSummaryJson: { incidents: [], achievements: ['テスト整備'], issues: [], skills: [] },
+      confirmedSummary: { incidents: [], achievements: ['テスト整備'], issues: [], skills: [] },
     }),
   );
   void repo.save(
@@ -48,6 +65,19 @@ export function seedReports(repo: InMemoryReportRepository): void {
       reportDate: '2026-07-15',
       rawText: '書きかけの下書き本文。',
       status: 'draft',
+      aiSummaryJson: null,
+      confirmedSummary: null,
+    }),
+  );
+  void repo.save(
+    ReportEntity.reconstruct({
+      id: 'r_other',
+      userId: 'staff02',
+      reportDate: '2026-07-14',
+      rawText: '他スタッフの報告。',
+      status: 'confirmed',
+      aiSummaryJson: { incidents: [], achievements: [], issues: [], skills: [] },
+      confirmedSummary: { incidents: [], achievements: [], issues: [], skills: [] },
     }),
   );
 }

@@ -147,8 +147,3 @@ apps/service/src/generated/
 
 # SDD ワークフローのスクラッチ
 .superpowers/
-test-results/
-
-# Python cache
-__pycache__/
-*.pyc

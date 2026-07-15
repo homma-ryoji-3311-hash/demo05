@@ -1,6 +1,10 @@
 // slice-06 auth-authz — UI 層（正本: docs/spec/slice-06.md「画面要件」, approved）
-// ADR-0018: frontend 未実装のため赤が正常。page.goto で S1 を叩く（静的検知4b）。
+// このスライスは「未認証」の挙動を検証するため、ui プロジェクト既定の認証済み storageState を空に上書きする。
+// これにより slice-01 等（認証済みで /reports/new が入力画面）と slice-06 test2（未認証で /login へ）が両立する。
 import { test, expect } from '@playwright/test';
+
+// 未認証コンテキスト（fixture セッションを持たない）で走らせる。
+test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe('slice-06 auth-authz [ui] — S1 ログイン', () => {
   test('ログインボタンからロール別ホームへ遷移する', async ({ page }) => {

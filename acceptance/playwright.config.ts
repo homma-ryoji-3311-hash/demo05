@@ -1,0 +1,27 @@
+import { defineConfig } from '@playwright/test';
+
+// 接続先は環境変数で切替（ADR-0005・0018）:
+//   ACCEPTANCE_BASE_URL     … API 層（reference-mock :8000 / backend :3000）
+//   ACCEPTANCE_UI_BASE_URL  … 画面層（frontend :5173）
+// 同じスイートが reference-mock に対して緑・実装前 backend に対して赤になる反転が
+// 「翻訳が正しい」ことの機械的証明（ただし API 層のみ。UI 層は answer key を持たない）。
+const API_BASE = process.env.ACCEPTANCE_BASE_URL ?? 'http://localhost:8000';
+const UI_BASE = process.env.ACCEPTANCE_UI_BASE_URL ?? 'http://localhost:5173';
+
+export default defineConfig({
+  testDir: '.',
+  fullyParallel: true,
+  reporter: [['list']],
+  projects: [
+    {
+      name: 'api',
+      testMatch: /.*\.api\.spec\.ts$/,
+      use: { baseURL: API_BASE },
+    },
+    {
+      name: 'ui',
+      testMatch: /.*\.ui\.spec\.ts$/,
+      use: { browserName: 'chromium', baseURL: UI_BASE },
+    },
+  ],
+});

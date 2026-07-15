@@ -1,0 +1,14 @@
+{
+  "name": "acceptance",
+  "private": true,
+  "type": "module",
+  "description": "受け入れテスト（実 HTTP / Playwright E2E）。接続先は ACCEPTANCE_BASE_URL(API) / ACCEPTANCE_UI_BASE_URL(画面) で切替（ADR-0005・0018）。",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
+  }
+}

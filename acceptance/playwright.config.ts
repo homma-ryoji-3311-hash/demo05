@@ -23,7 +23,17 @@ export default defineConfig({
     {
       name: 'ui',
       testMatch: /.*\.ui\.spec\.ts$/,
-      use: { browserName: 'chromium', baseURL: UI_BASE },
+      // ui は既定で「認証済み（fixture セッション staff01）」で走る。
+      // frontend の認証ガードと apiFetch が localStorage 'session' を読む。
+      // 未認証の挙動（保護画面→/login）を検証する auth.ui.spec だけが storageState を空に上書きする。
+      use: {
+        browserName: 'chromium',
+        baseURL: UI_BASE,
+        storageState: {
+          cookies: [],
+          origins: [{ origin: UI_BASE, localStorage: [{ name: 'session', value: 'staff01' }] }],
+        },
+      },
     },
   ],
 });

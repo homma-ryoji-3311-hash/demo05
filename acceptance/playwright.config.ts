@@ -16,7 +16,9 @@ export default defineConfig({
     {
       name: 'api',
       testMatch: /.*\.api\.spec\.ts$/,
-      use: { baseURL: API_BASE },
+      // 受け入れテストは fixture user（staff01）として認証済みで走る（レジストリ方針）。
+      // slice-06 のみ個別リクエストでヘッダを外して 401 を検証する。
+      use: { baseURL: API_BASE, extraHTTPHeaders: { 'X-User-Id': 'staff01' } },
     },
     {
       name: 'ui',

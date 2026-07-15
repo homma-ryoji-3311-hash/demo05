@@ -6,7 +6,17 @@
 
 | slice_id | slug | 概要 | 由来 | 依存 |
 |---|---|---|---|---|
-| ―（未採番。工程2 の `/board` 初回採番で埋まる） | | | | |
+| slice-01 | auth-login | 認証基盤・ログイン画面（Google OAuth・許可ドメイン/招待制・ロール別遷移） | overview | ― |
+| slice-02 | engineer-home | エンジニア用ホーム画面 | overview | slice-01 |
+| slice-03 | report-input-freetext | 業務報告入力（自由文モード・自動下書き保存） | overview | slice-01 |
+| slice-04 | ai-summary-review | AI整形結果確認・編集画面（要確認フラグ・確定） | overview | slice-03 |
+| slice-05 | report-list-engineer | 業務報告一覧・詳細画面（エンジニア視点） | overview | slice-04 |
+| slice-06 | sales-home | 営業担当用ホーム画面 | overview | slice-01 |
+| slice-07 | engineer-list | エンジニア一覧（管理）画面 | overview | slice-06 |
+| slice-08 | report-list-sales-filter | 業務報告一覧・詳細画面（営業担当視点・フィルタ拡張） | overview | slice-05, slice-07 |
+| slice-09 | excel-template-management | Excelテンプレート管理画面 | overview | slice-06 |
+| slice-10 | skillsheet-generation-backend | スキルシート生成基盤（データ組み立て→AI変換→テンプレート反映） | overview | slice-08, slice-09 |
+| slice-11 | skillsheet-management-ui | スキルシート管理・生成確認画面（一覧・個別生成・PDFプレビュー・DL） | overview | slice-10 |
 
 ## 採番ルール（ADR-0013）
 

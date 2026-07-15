@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "statusLine": {
+    "type": "command",
+    "command": "\"$CLAUDE_PROJECT_DIR/.claude/statusline.sh\"",
+    "padding": 0
+  },
+  "env": {
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"
+  },
+  "permissions": {
+    "deny": [
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(git branch -D:*)",
+      "Bash(rm -rf:*)",
+      "Bash(npx prisma migrate:*)",
+      "Bash(pnpm prisma migrate:*)",
+      "Bash(prisma migrate:*)",
+      "Bash(pnpm --filter @staff-report/api db:migrate:*)",
+      "Bash(pnpm --filter @staff-report/api db:deploy:*)",
+      "Bash(make db-migrate:*)",
+      "Bash(make db-reset:*)",
+      "Edit(.env*)",
+      "Write(.env*)",
+      "Edit(CLAUDE.md)",
+      "Write(CLAUDE.md)",
+      "Edit(docs/adr/**)",
+      "Edit(docs/画面仕様/**)",
+      "Write(docs/画面仕様/**)",
+      "Edit(apps/web/src/common/api/generated/**)",
+      "Write(apps/web/src/common/api/generated/**)",
+      "Edit(apps/service/prisma/migrations/**)",
+      "Write(apps/service/prisma/migrations/**)",
+      "Read(.env*)",
+      "Read(**/*.pem)"
+    ],
+    "ask": [
+      "Bash(gh pr merge:*)",
+      "Bash(psql:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-tool-use-bash.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-paths.sh\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/post-tool-use-check.sh\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-gate.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/post-compact-reinject.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

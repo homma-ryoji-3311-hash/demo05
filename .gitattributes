@@ -1,0 +1,4 @@
+# シェルスクリプトは全プラットフォームで bash が実行する。
+# CRLF でチェックアウトされるとシバン/コマンドが壊れるため LF を強制する。
+# （.claude/hooks/*.sh・statusline.sh・skills 配下の *.sh が対象）
+*.sh text eol=lf

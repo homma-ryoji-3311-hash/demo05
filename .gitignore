@@ -151,3 +151,4 @@ apps/service/src/generated/
 # Python (tools/teamdev-test-runner-mcp)
 __pycache__/
 *.pyc
+.venv/

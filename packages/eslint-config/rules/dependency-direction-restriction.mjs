@@ -86,7 +86,9 @@ export const dependencyDirectionRestriction = {
     schema: [],
   },
   create(context) {
-    const filename = context.filename;
+    // Windows ではパス区切りが `\`（例: src\common\infra\...）のため、`/infra/` 等の判定が
+    // 空振りして正当な infrastructure ファイルを誤検知する。判定前に `/` へ正規化する。
+    const filename = context.filename.replace(/\\/g, '/');
 
     return {
       ImportDeclaration(node) {

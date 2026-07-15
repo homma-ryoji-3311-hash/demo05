@@ -80,7 +80,9 @@ export const layerDependencyRestriction = {
     schema: [],
   },
   create(context) {
-    const currentLayer = detectLayer(context.filename);
+    // Windows のパス区切り（\）を `/` に正規化してからレイヤーを判定する。
+    // 正規化しないと detectLayer が空振りし、依存方向チェックが全く効かない（false negative）。
+    const currentLayer = detectLayer(context.filename.replace(/\\/g, '/'));
 
     if (!currentLayer) return {};
 

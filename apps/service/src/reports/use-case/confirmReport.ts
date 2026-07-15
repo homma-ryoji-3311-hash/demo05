@@ -1,7 +1,7 @@
-import { HttpException } from '../../common/interfaceAdapter/api/httpException.js';
 import type { ReportEntity, StructuredSummary } from '../domain/model/report.js';
 import type { ReportRepositoryInterface } from '../domain/interface/reportRepository.js';
 import type { Summarizer } from '../domain/interface/summarizer.js';
+import { ReportConfirmedError } from '../domain/error/reportErrors.js';
 import { loadOwnedReport } from './loadOwnedReport.js';
 
 /**
@@ -17,7 +17,7 @@ export class ConfirmReportUseCase {
 
   async execute(input: { userId: string; id: string; summary?: StructuredSummary }): Promise<ReportEntity> {
     const report = await loadOwnedReport(this.repo, input.id, input.userId);
-    if (report.isConfirmed()) throw new HttpException(409, 'already_confirmed'); // AC-3
+    if (report.isConfirmed()) throw new ReportConfirmedError(input.id); // AC-3: 二重確定 → 409
     const summary = input.summary ?? report.aiSummaryJson ?? (await this.summarizer.summarize(report.rawText));
     report.confirm(summary);
     await this.repo.save(report);

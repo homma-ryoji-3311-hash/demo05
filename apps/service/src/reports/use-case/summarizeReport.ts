@@ -1,7 +1,7 @@
-import { HttpException } from '../../common/interfaceAdapter/api/httpException.js';
 import type { StructuredSummary } from '../domain/model/report.js';
 import type { ReportRepositoryInterface } from '../domain/interface/reportRepository.js';
 import type { Summarizer } from '../domain/interface/summarizer.js';
+import { SummarizerUnavailableError } from '../domain/error/reportErrors.js';
 import { loadOwnedReport } from './loadOwnedReport.js';
 
 /**
@@ -19,7 +19,7 @@ export class SummarizeReportUseCase {
   async execute(input: { userId: string; id: string }): Promise<StructuredSummary> {
     const report = await loadOwnedReport(this.repo, input.id, input.userId);
     if (report.rawText.includes('__FAIL__')) {
-      throw new HttpException(502, 'summarizer_failed'); // AC-4: 下書きは draft のまま保持
+      throw new SummarizerUnavailableError(); // AC-4: 502・下書きは draft のまま保持（保存しない）
     }
     const summary = await this.summarizer.summarize(report.rawText);
     report.applySummary(summary);

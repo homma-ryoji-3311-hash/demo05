@@ -17,13 +17,16 @@
 
 // infrastructure 層は正式名 /infrastructure/ と短縮形 /infra/ の両方を同一レイヤーとして扱う。
 const INFRA = ['/infrastructure/', '/infra/'];
+// usecases 層は複数形 /usecases/ とハイフン表記 /use-case/（scaffold の実ディレクトリ）の両方を扱う。
+const USECASE = ['/usecases/', '/use-case/'];
 
 /** @type {Record<string, string[]>} レイヤーごとの禁止importリスト */
 const FORBIDDEN_IMPORTS = {
-  '/domain/': ['/usecases/', ...INFRA, '/interfaceAdapter/'],
+  '/domain/': [...USECASE, ...INFRA, '/interfaceAdapter/'],
   '/usecases/': [...INFRA, '/interfaceAdapter/'],
-  '/infrastructure/': ['/usecases/', '/interfaceAdapter/'],
-  '/infra/': ['/usecases/', '/interfaceAdapter/'],
+  '/use-case/': [...INFRA, '/interfaceAdapter/'],
+  '/infrastructure/': [...USECASE, '/interfaceAdapter/'],
+  '/infra/': [...USECASE, '/interfaceAdapter/'],
   '/interfaceAdapter/': [...INFRA],
 };
 
@@ -31,6 +34,7 @@ const FORBIDDEN_IMPORTS = {
 const LAYER_NAMES = {
   '/domain/': 'domain',
   '/usecases/': 'usecases',
+  '/use-case/': 'usecases',
   '/infrastructure/': 'infrastructure',
   '/infra/': 'infrastructure',
   '/interfaceAdapter/': 'interfaceAdapter',

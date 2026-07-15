@@ -11,6 +11,8 @@ const KIND_TO_STATUS: Record<ErrorKind, number> = {
   not_found: 404,
   conflict: 409,
   unauthorized: 401,
+  forbidden: 403, // 所有権・認可の拒否（他人のデータ・許可外ドメイン等）
+  external: 502, // 外部依存（Summarizer 等）の失敗。Bad Gateway
   internal: 500,
 };
 

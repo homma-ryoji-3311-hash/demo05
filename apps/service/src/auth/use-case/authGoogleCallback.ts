@@ -1,6 +1,6 @@
-import { HttpException } from '../../common/interfaceAdapter/api/httpException.js';
 import { UserEntity, type UserProps } from '../domain/model/user.js';
 import type { UserRepositoryInterface } from '../domain/interface/userRepository.js';
+import { AuthDomainNotAllowedError } from '../domain/error/authErrors.js';
 
 const ALLOWED_DOMAIN = 'example.test';
 
@@ -16,7 +16,7 @@ export class AuthGoogleCallbackUseCase {
     const email = (input.email || '').toLowerCase();
     const domain = email.split('@')[1];
     if (!email || domain !== ALLOWED_DOMAIN) {
-      throw new HttpException(403, 'domain_not_allowed');
+      throw new AuthDomainNotAllowedError(); // slice-06 AC-2 → 403
     }
     const id = email.split('@')[0] ?? '';
     let user = await this.repo.findById(id);

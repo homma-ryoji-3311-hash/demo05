@@ -26,3 +26,21 @@ export class ReportNotFoundError extends Error implements DomainError {
     this.name = 'ReportNotFoundError';
   }
 }
+
+/** 他人が所有する報告へのアクセス（所有権の拒否）。kind=forbidden → 403。 */
+export class ReportForbiddenError extends Error implements DomainError {
+  readonly kind = 'forbidden' as const;
+  constructor(id: string) {
+    super(`report ${id} is not accessible by this user`);
+    this.name = 'ReportForbiddenError';
+  }
+}
+
+/** Summarizer（外部依存）の失敗。kind=external → 502。報告は下書きのまま保持される。 */
+export class SummarizerUnavailableError extends Error implements DomainError {
+  readonly kind = 'external' as const;
+  constructor() {
+    super('summarizer failed');
+    this.name = 'SummarizerUnavailableError';
+  }
+}

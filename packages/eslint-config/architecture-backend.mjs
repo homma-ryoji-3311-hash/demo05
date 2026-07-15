@@ -62,7 +62,7 @@ export function createBackendArchitectureConfig() {
     },
     {
       name: 'staff-report-usecase-rules',
-      files: ['src/**/usecases/**/*.ts'],
+      files: ['src/**/usecases/**/*.ts', 'src/**/use-case/**/*.ts'],
       ignores: ['src/**/*.test.ts'],
       plugins: {
         architecture: plugin,
@@ -136,7 +136,7 @@ export function createBackendArchitectureConfig() {
     {
       // usecases層: HTTPの関心事のimport禁止
       name: 'staff-report-usecases-protection',
-      files: ['src/**/usecases/**/*.ts'],
+      files: ['src/**/usecases/**/*.ts', 'src/**/use-case/**/*.ts'],
       rules: {
         'no-restricted-imports': [
           'error',

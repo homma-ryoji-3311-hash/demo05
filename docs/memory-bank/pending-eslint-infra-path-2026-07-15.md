@@ -15,12 +15,19 @@
 `packages/eslint-config/rules/{dependency-direction,layer-dependency}-restriction.mjs`。
 → `apps/service` の lint が clean。ADR-0011 の依存方向強制も Windows で復活。
 
-## 残る別件（要フォロー・未修正）
+## 【解決 2026-07-16】use-case 命名ギャップ
 
-- `layer-dependency-restriction` は use-case 層を `/usecases/` で判定するが、scaffold の実ディレクトリは
-  **`use-case/`**（ハイフン）。`usecase-naming-convention` も `src/**/usecases/**` を対象にしており、
-  どちらも**現 scaffold では発火しない**。use-case 層の依存方向・命名が未強制。命名を `use-case` に合わせるか
-  scaffold を `usecases` に統一するかは AIアーキ判断（変更で既存違反が表面化しうるため検証必須）。
+`layer-dependency-restriction` は use-case 層を `/usecases/` で判定していたが scaffold の実ディレクトリは
+**`use-case/`**。ルールに `use-case/` を追加（`USECASE=['/usecases/','/use-case/']`）、`architecture-backend.mjs`
+の `usecase-naming` / `usecases-protection` の files グロブにも `src/**/use-case/**` を追加。
+
+**表面化した既存違反も修正**: use-case 4本（loadOwnedReport/confirmReport/summarizeReport/authGoogleCallback）が
+`HttpException`（interfaceAdapter 層）を throw していた（use-case→interfaceAdapter の依存方向違反）。
+正しくドメインエラー（kind ベース）に置換し、共通 error-handler が HTTP へ変換する形にした：
+- `ErrorKind` に `forbidden`(→403)・`external`(→502) を追加。
+- `ReportForbiddenError`・`SummarizerUnavailableError`・`AuthDomainNotAllowedError` を追加、
+  既存の `ReportNotFoundError`(404)・`ReportConfirmedError`(409) を利用。
+- service lint clean・typecheck 緑・service test 24 緑・acceptance 37 緑（403/502/409/404 は同一コード）。
 
 ---
 

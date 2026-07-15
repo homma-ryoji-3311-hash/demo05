@@ -147,3 +147,7 @@ apps/service/src/generated/
 
 # SDD ワークフローのスクラッチ
 .superpowers/
+
+# Python (tools/teamdev-test-runner-mcp)
+__pycache__/
+*.pyc

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "teamdev-test-runner": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "tools/teamdev-test-runner-mcp",
+        "teamdev-test-runner"
+      ]
+    }
+  }
+}

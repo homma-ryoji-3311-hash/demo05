@@ -7,6 +7,7 @@ import type { GreetingRepositoryInterface } from './template/domain/interface/gr
 import type { ReportRepositoryInterface } from './reports/domain/interface/reportRepository.js';
 import { CreateDraftUseCase } from './reports/use-case/createDraft.js';
 import { UpdateDraftUseCase } from './reports/use-case/updateDraft.js';
+import { GetDraftUseCase } from './reports/use-case/getDraft.js';
 import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { createHealthRouter } from './common/interfaceAdapter/api/route/health.js';
@@ -36,6 +37,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const reportController = new ReportController(
     new CreateDraftUseCase(reportRepository, generateId),
     new UpdateDraftUseCase(reportRepository),
+    new GetDraftUseCase(reportRepository),
   );
 
   const app = express();

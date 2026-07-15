@@ -1,5 +1,6 @@
 import type { CreateDraftUseCase } from '../../../use-case/createDraft.js';
 import type { UpdateDraftUseCase } from '../../../use-case/updateDraft.js';
+import type { GetDraftUseCase } from '../../../use-case/getDraft.js';
 import type { ReportEntity } from '../../../domain/model/report.js';
 
 export interface ReportResponse {
@@ -21,7 +22,14 @@ export class ReportController {
   constructor(
     private readonly createDraft: CreateDraftUseCase,
     private readonly updateDraft: UpdateDraftUseCase,
+    private readonly getDraft: GetDraftUseCase,
   ) {}
+
+  /** S3 の下書き復元。現在の下書きがあれば返し、無ければ { draft: null }。 */
+  async draft(userId: string): Promise<{ status: number; body: ReportResponse | { draft: null } }> {
+    const report = await this.getDraft.execute({ userId });
+    return { status: 200, body: report ? toResponse(report) : { draft: null } };
+  }
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
     const b = (body ?? {}) as Record<string, unknown>;

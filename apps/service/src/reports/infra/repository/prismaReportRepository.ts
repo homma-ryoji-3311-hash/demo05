@@ -20,7 +20,21 @@ export class PrismaReportRepository implements ReportRepositoryInterface {
 
   async findById(id: string): Promise<ReportEntity | null> {
     const r = await this.prisma.report.findUnique({ where: { id } });
-    if (!r) return null;
+    return r ? this.toEntity(r) : null;
+  }
+
+  async findDraftByUser(userId: string): Promise<ReportEntity | null> {
+    const r = await this.prisma.report.findFirst({ where: { userId, status: 'draft' } });
+    return r ? this.toEntity(r) : null;
+  }
+
+  private toEntity(r: {
+    id: string;
+    userId: string;
+    reportDate: string;
+    rawText: string;
+    status: string;
+  }): ReportEntity {
     return ReportEntity.reconstruct({
       id: r.id,
       userId: r.userId,

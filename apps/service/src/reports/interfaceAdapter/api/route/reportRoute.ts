@@ -15,6 +15,14 @@ export function createReportRouter(deps: { reportController: ReportController })
   const router = Router();
   const { reportController } = deps;
 
+  // GET /reports/draft は '/:id' より前に置く（将来 GET /:id を足すときのため）。
+  router.get('/draft', (req, res, next) => {
+    void reportController
+      .draft(userOf(req))
+      .then((r) => res.status(r.status).json(r.body))
+      .catch(next);
+  });
+
   router.post('/', (req, res, next) => {
     void reportController
       .create(userOf(req), req.body)

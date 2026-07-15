@@ -3,15 +3,35 @@ import { loadEnv } from './common/config/env.js';
 import { appLogger } from './common/logging/index.js';
 import { PrismaService } from './common/infra/prisma/prismaService.js';
 import { GreetingRepository } from './template/infra/repository/greetingRepository.js';
+import type { ReportRepositoryInterface } from './reports/domain/interface/reportRepository.js';
+import { PrismaReportRepository } from './reports/infra/repository/prismaReportRepository.js';
+import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
 
 const env = loadEnv();
 
+// 永続化の選択:
+//   既定 = Prisma（本番・DB 接続）。マイグレーションの実行は統合役（CLAUDE.md §1-2）。
+//   PERSISTENCE=memory = インメモリ（DB 不要）。受け入れテストのローカル緑検証に使う。
+const persistence = process.env.PERSISTENCE === 'memory' ? 'memory' : 'prisma';
+
+// greeting リポジトリはデモの no-op 実装で prisma を参照しないため、
+// memory モードでも PrismaService を構築するだけ（connect はしない）でよい。
 const prisma = new PrismaService(env.DATABASE_URL);
 
-await prisma.connect();
+let reportRepository: ReportRepositoryInterface;
+if (persistence === 'prisma') {
+  await prisma.connect();
+  reportRepository = new PrismaReportRepository(prisma);
+} else {
+  const mem = new InMemoryReportRepository();
+  seedReports(mem);
+  reportRepository = mem;
+  appLogger.info('persistence=memory: InMemoryReportRepository で起動（DB 接続なし）');
+}
 
 const app = createApp({
   greetingRepository: new GreetingRepository(prisma),
+  reportRepository,
 });
 
 const server = app.listen(env.PORT, () => {

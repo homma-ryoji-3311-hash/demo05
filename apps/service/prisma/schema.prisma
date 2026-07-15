@@ -14,3 +14,24 @@ model Greeting {
 
   @@map("greetings")
 }
+
+// slice-01 report-draft の本番スキーマ。適用（マイグレーション）は統合役（CLAUDE.md §1-2）。
+// 要約(slice-02)・確定(slice-03) 等のカラムは後続スライスで足す。
+model User {
+  id    String @id
+  email String @unique
+  name  String
+  role  String
+
+  @@map("users")
+}
+
+model Report {
+  id         String @id
+  userId     String @map("user_id")
+  reportDate String @map("report_date")
+  rawText    String @map("raw_text")
+  status     String
+
+  @@map("reports")
+}

@@ -1,6 +1,6 @@
 ---
 slice: slice-10-excel-template-manage
-approved: false
+approved: true
 ---
 
 # slice-10 excel-template-manage — Excel テンプレート管理

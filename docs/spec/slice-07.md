@@ -1,6 +1,6 @@
 ---
 slice: slice-07-staff-home
-approved: false
+approved: true
 ---
 
 # slice-07 staff-home — スタッフ用ホーム

@@ -1,6 +1,6 @@
 ---
 slice: slice-05-previous-reference
-approved: false
+approved: true
 ---
 
 # slice-05 previous-reference — 前回入力・前回要約の参照

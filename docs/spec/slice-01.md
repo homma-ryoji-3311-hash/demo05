@@ -1,6 +1,6 @@
 ---
 slice: slice-01-report-draft
-approved: false          # PM／AIアーキが grill を確認し true にするまで Phase B は acceptance/ を書けない
+approved: true          # PM／AIアーキが grill を確認し true にするまで Phase B は acceptance/ を書けない
 ---
 
 # slice-01 report-draft — 報告の下書き作成・自動保存

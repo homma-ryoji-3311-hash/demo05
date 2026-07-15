@@ -1,6 +1,6 @@
 ---
 slice: slice-04-report-list
-approved: false
+approved: true
 ---
 
 # slice-04 report-list — 自分の報告一覧・詳細

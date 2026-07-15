@@ -1,6 +1,6 @@
 ---
 slice: slice-02-report-summarize
-approved: false
+approved: true
 ---
 
 # slice-02 report-summarize — AI要約（Summarizer 抽象化層）

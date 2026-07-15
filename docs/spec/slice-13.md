@@ -1,6 +1,6 @@
 ---
 slice: slice-13-notification-settings
-approved: false
+approved: true
 ---
 
 # slice-13 notification-settings — 通知設定（リマインド時刻・Slack/メール ON/OFF）

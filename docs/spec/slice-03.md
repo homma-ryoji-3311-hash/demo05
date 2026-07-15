@@ -1,6 +1,6 @@
 ---
 slice: slice-03-report-confirm
-approved: false
+approved: true
 ---
 
 # slice-03 report-confirm — 要約の確認・編集・確定

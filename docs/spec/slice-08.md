@@ -1,6 +1,6 @@
 ---
 slice: slice-08-skillsheet-generate
-approved: false
+approved: true
 ---
 
 # slice-08 skillsheet-generate — スキルシート（Excel）生成

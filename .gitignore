@@ -152,3 +152,6 @@ apps/service/src/generated/
 __pycache__/
 *.pyc
 .venv/
+
+# Playwright acceptance results (transient)
+test-results/

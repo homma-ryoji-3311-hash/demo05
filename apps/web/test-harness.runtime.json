@@ -1,0 +1,11 @@
+{
+  "$schema": "../../tools/teamdev-test-runner-mcp/schema/runtime.schema.json",
+  "bootCommand": "pnpm dev",
+  "cwd": ".",
+  "env": { "NODE_ENV": "development" },
+  "entryUrl": "http://localhost:5173",
+  "port": 5173,
+  "bootTimeoutMs": 60000,
+  "readyCheck": { "type": "http_200", "path": "/" },
+  "shutdownGracefulMs": 5000
+}

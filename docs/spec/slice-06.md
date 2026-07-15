@@ -1,14 +1,15 @@
 ---
 slice: slice-06-auth-authz
-approved: false
+approved: true
 ---
 
 # slice-06 auth-authz — Google OAuth ＋ 権限境界の強制
 
 > 振る舞いの正本: `reference-mock/spec.md §3.1・§6.1` / `reference-mock/phase1-plan.md` ステップ3。
 > REST/コードは `docs/design/overview.md §3`。依存: slice-01。
-> **注意（未定あり）**: OAuth の実プロバイダ呼び出しを受け入れテストでどう扱うか（スタブ/フェイク）の方式は
-> **未定**（設計凍結ゲート §21 と関連）。approved にする前に PM が確定する。
+> **決定（PM・2026-07-15）**: OAuth の実プロバイダ呼び出しは受け入れテストで**決定的フェイク/スタブに差し替える**。
+> 本物の client secret・実通信を CI に持ち込まない（`Summarizer` と同じく提供元非依存の抽象層の背後でフェイクを差す）。
+> source: PM。理由: 参照モックは外部プロバイダのテスト扱いを規定しない＝新規決定（overview §8.5 凍結解除ログ）。テスト方式の決定のため AC 化しない。
 
 ## AC-1 Google OAuth でログインするとセッションが発行され users に upsert される
 

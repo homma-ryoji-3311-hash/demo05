@@ -1,6 +1,6 @@
 ---
 slice: slice-16-slack-reminder
-approved: false
+approved: true
 ---
 
 # slice-16 slack-reminder — Slack リマインド（短間隔ジョブによる抽出送信）
@@ -10,9 +10,9 @@ approved: false
 > **TZ 方針**: 保存 UTC・判定はユーザーのローカル時刻（spec.md §3.8・CLAUDE.md 原則9）。
 > **段階**: まずバッジ通知（アプリ内・軽い）→ その後 Slack／メール（外部連携・後段）。
 > **注意**: リマインド送信は `Summarizer` と同様に**提供元非依存の通知抽象化層**の背後で行い、Slack/メールの SDK・Webhook をドメイン層に書かない（overview §5 の思想を通知に適用）。
-> **未定（AC 化しない）**:
-> - 外部 Slack/メール送信を受け入れテストでどう扱うか（スタブ/フェイクの方式）は未定（slice-06 の OAuth と同種の論点）。approved 前に PM が確定する。
-> - 退勤連動を起点にした締切・リマインドのタイミング（phase2-design.md §6.6・Phase 2 最後段〜Phase 3 級）。
+> **決定（PM・2026-07-15）**:
+> - 外部 Slack/メール送信は受け入れテストで**決定的フェイク notifier に差し替える**（slice-06 の OAuth と同方針）。実 Slack Webhook・実メール送信を CI に持ち込まず、フェイク notifier への「誰に・どのチャネルで送ったか」の送信呼び出しをアサートする。source: PM。理由: 参照モックは外部通知のテスト扱いを規定しない＝新規決定（overview §8.5 凍結解除ログ）。テスト方式の決定のため新規 AC は立てず、AC-1〜4 の検証手段に反映する（下記「画面要件」の golden 撮影欄・合成フィクスチャの `notifier.sink`）。
+> - 退勤連動を起点にした締切・リマインドのタイミング（phase2-design.md §6.6・Phase 2 最後段〜Phase 3 級）は本スライスのスコープ外。**後続スライス（Phase 2 最後段〜Phase 3 級）で扱う（PM 決定 2026-07-15）。**
 
 ## AC-1 短間隔ジョブが「今この時刻に通知すべきユーザー」を DB から抽出して送る
 

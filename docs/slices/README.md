@@ -41,8 +41,12 @@
 | slice-21 | bulk-download | 09,14 | 一括ダウンロード（全員分生成・ZIP・客先/部署/グループ絞り込み、S11） | 6 | overview |
 | slice-22 | group-settings | 19 | グループ別設定（設定駆動・コード分岐なし・変更は翌日以降の報告へ適用） | 6 | overview |
 | slice-23 | ai-follow-up-question | 03,22 | AI追加質問（薄い項目に一度だけ質問→本文追記→要約再生成・degrade で報告は必ず出せる） | 6 | overview |
+| slice-24 | permission-model | 17 | 権限3軸（操作権限レベル/担当範囲/機微情報アクセス）・主担当/副担当・個人単位担当関係・system/super admin 細分化（phase2-design §1〜4） | 6+ | overview |
+| slice-25 | report-history-appeal | 15 | スタッフ本人の履行状況の異議申立て手段（誤記録への申立て・phase2-design §6.9 未決④） | 6+ | overview |
+| slice-26 | ai-followup-advanced | 23,24 | AI追加質問の後続（管理画面でのカテゴリ付替・定型質問の高度運用・チーム別基準・データモデル精緻化・report-quality §12.5 の5,6） | 6+ | overview |
 
 > 由来の値：`overview`（基本設計由来）／`split-of-slice-NN`（分割）／`regression-of-slice-NN`（回帰・ADR-0014）。
+> **slice-24〜26 は 2026-07-15 の凍結解除（overview §8.5）で生じたスコープアウト先の backlog。** 番号は不変・append-only。仕様表は後続フェーズで起こす。
 
 ## フェーズ境界（ADR-0016・フェーズ型大バッチ）
 

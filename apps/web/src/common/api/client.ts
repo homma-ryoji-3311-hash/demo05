@@ -6,11 +6,12 @@ export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T
   const headers = new Headers(options?.headers);
   headers.set('Content-Type', 'application/json');
 
-  // 認証 seam（フェイクの固定セッション）。
-  // backend は X-User-Id が空だと 401 を返すため、全リクエストに固定のスタッフ ID を付与する。
-  // 本物の OAuth セッションを導入するまでの差し込み口（ここだけを差し替えればよい）。
+  // 認証 seam（フェイクのセッション）。ログイン時に localStorage 'session' へ保存したユーザー ID を
+  // X-User-Id として送る。未ログイン（session なし）なら付与しない → backend は 401（保護ルートは
+  // 認証ガードが /login へ誘導するので通常ここには到達しない）。本物の OAuth 導入時はここを差し替える。
   if (!headers.has('X-User-Id')) {
-    headers.set('X-User-Id', 'staff01');
+    const session = typeof localStorage !== 'undefined' ? localStorage.getItem('session') : null;
+    if (session) headers.set('X-User-Id', session);
   }
 
   const response = await fetch(url, { ...options, headers });

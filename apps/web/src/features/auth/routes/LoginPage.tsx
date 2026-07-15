@@ -1,13 +1,17 @@
+import { useNavigate } from 'react-router-dom';
+
 /**
  * S1 ログイン（slice-06）。
  * - 「Google でログイン」ボタンを表示する。外部 OAuth は決定的フェイク（backend 側）。
- * - 認証ガードは付けない（slice-01 の /reports/new は入力画面のまま。ADR 整合のため test2 は赤のまま）。
+ * - ログインでフェイクのセッション（staff01）を localStorage に保存し、ロール別ホームへ遷移する。
  */
 export function LoginPage() {
+  const navigate = useNavigate();
+
   const onLogin = (): void => {
-    // フェイクの固定セッション運用のため、ここではホームへ進む。
-    // 本物の OAuth を導入する際は backend の /auth/google へ遷移させる。
-    window.location.href = '/home';
+    // フェイクのセッション。本物の OAuth を導入する際は backend の /auth/google へ遷移させる。
+    localStorage.setItem('session', 'staff01');
+    navigate('/home');
   };
 
   return (

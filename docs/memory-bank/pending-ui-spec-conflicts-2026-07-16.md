@@ -2,6 +2,10 @@
 
 > `/flywheel` の隔離草案（工程4=翻訳の欠陥 → 上流 PM／AIアーキ）。実装(工程6)では回避せず報告する。
 > acceptance は spec/* ブランチでのみ修正可（feature からは read-only）。下記は上流での修正提案。
+>
+> **【更新 2026-07-16】#1（slice-06）は解消済み。** ui プロジェクトに認証 storageState を導入し
+> （spec/slice-01 の acceptance 修正）、frontend に認証ガード（RequireAuth）を実装（工程6）。
+> Phase1 全37テスト緑（api 23＋ui 14）。**#2（slice-05 test2 の弱さ）は未解消**（下記）。
 
 ## 事象
 

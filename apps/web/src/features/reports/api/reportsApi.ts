@@ -31,3 +31,16 @@ export async function updateDraft(id: string, rawText: string): Promise<ReportDt
     body: JSON.stringify({ raw_text: rawText }),
   });
 }
+
+/** AI 要約の固定スキーマ（4カテゴリ・提供元非依存）。backend の抽象化層が返す形と同じ。 */
+export interface SummaryDto {
+  incidents: string[];
+  achievements: string[];
+  issues: string[];
+  skills: string[];
+}
+
+/** 下書きを要約する（slice-02）。失敗（502 等）は apiFetch が例外にする＝画面は失敗状態を出す。 */
+export async function summarizeReport(id: string): Promise<SummaryDto> {
+  return apiFetch<SummaryDto>(`/reports/${id}/summarize`, { method: 'POST' });
+}

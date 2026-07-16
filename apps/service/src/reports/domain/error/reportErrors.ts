@@ -26,3 +26,24 @@ export class ReportNotFoundError extends Error implements DomainError {
     this.name = 'ReportNotFoundError';
   }
 }
+
+/**
+ * Summarizer 実装（プロバイダ／フェイク）が要約を返せなかった。kind=external → 502。
+ * use-case はこれに限らず**あらゆる例外**を SummarizerFailedError に包む（実 SDK の生エラーも 502 にするため）。
+ */
+export class SummarizerUnavailableError extends Error implements DomainError {
+  readonly kind = 'external' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'SummarizerUnavailableError';
+  }
+}
+
+/** Summarizer（外部依存）の失敗。kind=external → 502。投げた時点で報告は保存しないので draft のまま残る。 */
+export class SummarizerFailedError extends Error implements DomainError {
+  readonly kind = 'external' as const;
+  constructor(id: string, options?: { cause?: unknown }) {
+    super(`summarization failed for report ${id}`, options);
+    this.name = 'SummarizerFailedError';
+  }
+}

@@ -1,6 +1,8 @@
 import type { CreateDraftUseCase } from '../../../use-case/createDraft.js';
 import type { UpdateDraftUseCase } from '../../../use-case/updateDraft.js';
 import type { GetDraftUseCase } from '../../../use-case/getDraft.js';
+import type { GetReportUseCase } from '../../../use-case/getReport.js';
+import type { SummarizeReportUseCase } from '../../../use-case/summarizeReport.js';
 import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
 
 export interface ReportResponse {
@@ -28,7 +30,7 @@ function toResponse(report: ReportEntity): ReportResponse {
 }
 
 /**
- * HTTP ⇔ ユースケースの変換のみ（slice-01 スコープ: 作成・更新・下書き取得）。
+ * HTTP ⇔ ユースケースの変換のみ（slice-01: 作成・更新・下書き取得／slice-02: 要約・取得）。
  * Express の Request/Response には依存しない（戻り値を route が送出する）。
  */
 export class ReportController {
@@ -36,6 +38,8 @@ export class ReportController {
     private readonly createDraft: CreateDraftUseCase,
     private readonly updateDraft: UpdateDraftUseCase,
     private readonly getDraft: GetDraftUseCase,
+    private readonly summarizeReport: SummarizeReportUseCase,
+    private readonly getReport: GetReportUseCase,
   ) {}
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
@@ -54,5 +58,21 @@ export class ReportController {
   async draft(userId: string): Promise<{ status: number; body: ReportResponse | { draft: null } }> {
     const report = await this.getDraft.execute({ userId });
     return { status: 200, body: report ? toResponse(report) : { draft: null } };
+  }
+
+  /** 報告1件の取得。要約失敗後も draft のまま残っていること（AC-4）の確認に使われる。 */
+  async get(userId: string, id: string): Promise<{ status: number; body: ReportResponse }> {
+    const report = await this.getReport.execute({ userId, id });
+    return { status: 200, body: toResponse(report) };
+  }
+
+  /**
+   * 要約（slice-02）。返すのは要約 JSON そのもの＝4キー固定（AC-2: 余剰キー禁止）。
+   * report を包んで返さないのは、受け入れテストが body のキー集合を4キーと厳密比較するため。
+   * 失敗（502）は use-case が投げる SummarizerFailedError を error-handler が変換する。
+   */
+  async summarize(userId: string, id: string): Promise<{ status: number; body: StructuredSummary }> {
+    const summary = await this.summarizeReport.execute({ userId, id });
+    return { status: 200, body: summary };
   }
 }

@@ -24,7 +24,7 @@ export interface ReportProps {
 /**
  * 業務報告エンティティ。
  * slice-01 スコープ: 下書き作成・本文更新・確定後不変の判定まで。
- * 要約(applySummary)は slice-02、確定(confirm)は slice-03 で足す。
+ * slice-02 で要約の保持(applySummary)を追加。確定(confirm)は slice-03 で足す。
  */
 export class ReportEntity {
   private constructor(
@@ -33,7 +33,7 @@ export class ReportEntity {
     private readonly _reportDate: string,
     private _rawText: string,
     private readonly _status: ReportStatus,
-    private readonly _aiSummaryJson: StructuredSummary | null,
+    private _aiSummaryJson: StructuredSummary | null,
     private readonly _confirmedSummary: StructuredSummary | null,
   ) {}
 
@@ -51,6 +51,9 @@ export class ReportEntity {
   }
   get status(): ReportStatus {
     return this._status;
+  }
+  get aiSummaryJson(): StructuredSummary | null {
+    return this._aiSummaryJson;
   }
 
   /** 新規下書き。report_date のビジネスルール（必須）を検証する（→ 422）。 */
@@ -82,6 +85,11 @@ export class ReportEntity {
   /** 下書き本文の更新（確定後不変の判定は use-case が担う）。 */
   updateRawText(rawText: string): void {
     this._rawText = rawText;
+  }
+
+  /** 要約結果を保持する（slice-02）。status は変えない＝下書きは draft のまま（確定は slice-03 の confirm）。 */
+  applySummary(summary: StructuredSummary): void {
+    this._aiSummaryJson = summary;
   }
 
   toPersistence(): ReportProps {

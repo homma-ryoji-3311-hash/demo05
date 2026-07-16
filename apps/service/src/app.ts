@@ -11,17 +11,23 @@ import { createAccessLogger } from './common/interfaceAdapter/api/middlewares/ac
 import { createDocsRouter } from './common/interfaceAdapter/api/openapi/route/docsRoute.js';
 import { greetingContractGroup } from './template/interfaceAdapter/api/contract/greetingContract.js';
 import type { ReportRepositoryInterface } from './reports/domain/interface/reportRepository.js';
+import type { SummarizerInterface } from './reports/domain/interface/summarizer.js';
 import { CreateDraftUseCase } from './reports/use-case/createDraft.js';
 import { UpdateDraftUseCase } from './reports/use-case/updateDraft.js';
 import { GetDraftUseCase } from './reports/use-case/getDraft.js';
+import { GetReportUseCase } from './reports/use-case/getReport.js';
+import { SummarizeReportUseCase } from './reports/use-case/summarizeReport.js';
 import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
+import { FakeSummarizer } from './reports/infra/summarizer/fakeSummarizer.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
   /** 省略時は seed 済みのインメモリ実装を使う（既存テストの createApp 呼び出しを不変に保つため）。 */
   reportRepository?: ReportRepositoryInterface;
+  /** 省略時は決定的フェイク。実プロバイダ実装はここに注入して差し替える（提供元非依存・slice-02 AC-2）。 */
+  summarizer?: SummarizerInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -33,6 +39,7 @@ export interface AppDependencies {
 export function createApp(deps: AppDependencies): express.Express {
   const { greetingRepository } = deps;
   const reportRepository = deps.reportRepository ?? defaultReportRepository();
+  const summarizer = deps.summarizer ?? new FakeSummarizer();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -41,6 +48,8 @@ export function createApp(deps: AppDependencies): express.Express {
     new CreateDraftUseCase(reportRepository, generateId),
     new UpdateDraftUseCase(reportRepository),
     new GetDraftUseCase(reportRepository),
+    new SummarizeReportUseCase(reportRepository, summarizer),
+    new GetReportUseCase(reportRepository),
   );
 
   const app = express();

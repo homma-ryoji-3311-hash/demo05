@@ -2,10 +2,15 @@
   "$schema": "../../tools/teamdev-test-runner-mcp/schema/runtime.schema.json",
   "bootCommand": "pnpm dev",
   "cwd": ".",
-  "env": { "NODE_ENV": "development", "PORT": "3000" },
+  "env": {
+    "NODE_ENV": "development",
+    "PORT": "3000",
+    "PERSISTENCE": "memory",
+    "DATABASE_URL": "postgresql://harness:notconnected@localhost:5432/harness_memory_mode"
+  },
   "entryUrl": "http://localhost:3000",
   "port": 3000,
-  "bootTimeoutMs": 60000,
+  "bootTimeoutMs": 120000,
   "readyCheck": { "type": "http_200", "path": "/api/health" },
   "shutdownGracefulMs": 5000
 }

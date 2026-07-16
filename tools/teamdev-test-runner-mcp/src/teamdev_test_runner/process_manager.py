@@ -2,11 +2,16 @@
 
   - bootCommand を `app_dir/cwd` で起動する
   - stdout/stderr を reader thread が LogBuffer へ流す
-  - 停止は SIGTERM で graceful → 期限切れで SIGKILL
+  - 停止は shell=True の子孫まで確実に殺し、**ポート解放**を成否の証拠にする
 
 Windows / POSIX で process group の扱いが違うので、shell=True の子孫まで確実に殺す:
-  Windows: `creationflags=CREATE_NEW_PROCESS_GROUP` + `taskkill /F /T /PID`
-  POSIX:   `start_new_session=True`（setsid）+ `os.killpg(SIGTERM/SIGKILL)`
+  Windows: `creationflags=CREATE_NEW_PROCESS_GROUP`。停止は**トップが生きているうちに**
+           `taskkill /F /T /PID`（先にトップを殺すと孫を取りこぼす。console の孫に届く
+           graceful シグナルが無いので graceful は行わない）
+  POSIX:   `start_new_session=True`（setsid）+ `os.killpg(SIGTERM → 期限切れで SIGKILL)`
+
+停止の成否は「トップの exit」ではなく「ポートが解放されたか」で判定する。孫を取り残すと
+ポートを掴んだままになり、ADR-0018 の反転確認（frontend 停止 → ui.spec 赤）が壊れる。
 
 **1 app_dir = 1 プロセス。** 既に走っている app_dir に start を投げたら error を返す
 （黙って二重起動しない。ポート衝突を「原因不明の赤」にしないため）。
@@ -187,49 +192,88 @@ class ProcessManager:
             return StopResult(stopped=False, error=f"{key} は起動していません")
 
         t0 = time.monotonic()
-        if h.proc.poll() is not None:
-            return StopResult(stopped=True, exit_code=h.proc.returncode, duration_ms=0)
+        port = h.runtime.port
 
-        grace = h.runtime.shutdown_graceful_ms / 1000.0
-        self._terminate(h.proc, force=False)
-        try:
-            h.proc.wait(timeout=grace)
-        except subprocess.TimeoutExpired:
-            self._terminate(h.proc, force=True)
+        if h.proc.poll() is None:
+            if IS_WINDOWS:
+                # Windows: console の孫（node/vite）に届く graceful シグナルが無く、
+                # トップ(cmd.exe)を先に terminate すると親子関係が切れて孫を取りこぼす。
+                # → トップが生きているうちにツリーごと force-kill する（taskkill /T が子孫を辿れる）。
+                self._win_tree_kill(h.proc.pid)
+            else:
+                # POSIX: プロセスグループへ SIGTERM（アプリの shutdown ハンドラが動く）→ 期限切れで SIGKILL。
+                grace = h.runtime.shutdown_graceful_ms / 1000.0
+                self._posix_kill(h.proc, signal.SIGTERM)
+                try:
+                    h.proc.wait(timeout=grace)
+                except subprocess.TimeoutExpired:
+                    self._posix_kill(h.proc, signal.SIGKILL)
             try:
                 h.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                return StopResult(
-                    stopped=False,
-                    duration_ms=int((time.monotonic() - t0) * 1000),
-                    error=f"pid={h.proc.pid} を SIGKILL しても停止しませんでした",
-                )
+                pass
 
-        return StopResult(
-            stopped=True,
-            exit_code=h.proc.returncode,
-            duration_ms=int((time.monotonic() - t0) * 1000),
-        )
+        # 成否は「トップの exit」ではなく「孫まで消えてポートが解放されたか」で判定する。
+        # shell=True の孫が残るとポートを掴んだままになり、ADR-0018 の反転確認（frontend 停止 →
+        # ui.spec 赤）が成立しなくなる。取り残しがあればもう一度ツリー/グループごと落とす。
+        port_ok = self._wait_port_released(port, timeout=5.0)
+        if not port_ok or h.proc.poll() is None:
+            if IS_WINDOWS:
+                self._win_tree_kill(h.proc.pid)
+            else:
+                self._posix_kill(h.proc, signal.SIGKILL)
+            port_ok = self._wait_port_released(port, timeout=5.0)
+
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        if h.proc.poll() is None or not port_ok:
+            return StopResult(
+                stopped=False,
+                exit_code=h.proc.returncode,
+                duration_ms=duration_ms,
+                error=(
+                    f"pid={h.proc.pid}: 停止後もポート {port} が解放されません（孤児プロセスの可能性）"
+                    if not port_ok
+                    else f"pid={h.proc.pid} が停止しませんでした"
+                ),
+            )
+        return StopResult(stopped=True, exit_code=h.proc.returncode, duration_ms=duration_ms)
 
     def stop_all(self) -> None:
         for key in list(self._handles):
             self.stop(Path(key))
 
+    # --- kill プリミティブ -------------------------------------------------
+
     @staticmethod
-    def _terminate(proc: "subprocess.Popen[bytes]", *, force: bool) -> None:
-        """shell=True の子孫ごと殺す。孫プロセスを取り残すとポートが解放されない。"""
-        if IS_WINDOWS:
-            if force:
-                subprocess.run(
-                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                    capture_output=True,
-                    check=False,
-                )
-            else:
-                proc.terminate()
-            return
-        sig = signal.SIGKILL if force else signal.SIGTERM
+    def _win_tree_kill(pid: int) -> None:
+        """Windows: プロセスツリー（子孫含む）ごと強制終了する。
+        トップが生きているうちに呼ぶこと——先にトップを殺すと taskkill /T が孫を辿れず取り残す。"""
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            capture_output=True,
+            check=False,
+        )
+
+    @staticmethod
+    def _posix_kill(proc: "subprocess.Popen[bytes]", sig: int) -> None:
+        """POSIX: プロセスグループ（start_new_session の子孫含む）へシグナルを送る。"""
         try:
             os.killpg(os.getpgid(proc.pid), sig)
         except (ProcessLookupError, PermissionError):
-            proc.kill() if force else proc.terminate()
+            try:
+                proc.send_signal(sig)
+            except ProcessLookupError:
+                pass
+
+    @staticmethod
+    def _wait_port_released(port: int | None, timeout: float) -> bool:
+        """port が listen でなくなる（解放される）まで待つ。port 未指定なら即 True。
+        「停止した」の本当の証拠はトップの exit ではなくポート解放。"""
+        if port is None:
+            return True
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not _is_listening(port):
+                return True
+            time.sleep(0.1)
+        return not _is_listening(port)

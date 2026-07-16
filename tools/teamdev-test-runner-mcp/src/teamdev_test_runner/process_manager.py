@@ -116,6 +116,11 @@ class ProcessManager:
                 "shell": True,
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.PIPE,
+                # stdin は**必ず** DEVNULL にする。既定（None）だと子が親の stdin を継承するが、
+                # 親は MCP stdio サーバー＝その stdin は Claude Code との JSON-RPC パイプ。
+                # これを `tsx watch` のような対話キー入力を待つ dev サーバーが掴むと、
+                # ワーカーを spawn せずに停止し、bootTimeoutMs を無限に伸ばしても ready にならない。
+                "stdin": subprocess.DEVNULL,
             }
             if IS_WINDOWS:
                 popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP

@@ -35,10 +35,10 @@ class ConflictError extends Error implements DomainError {
 }
 
 describe('errorHandler', () => {
-  it('ZodError は 400 と invalid_request を返す', () => {
+  it('ZodError は 422 と invalid_request を返す（CLAUDE.md §6・400 では受け入れテストが赤い）', () => {
     const parsed = z.string().safeParse(123);
     const res = handle(parsed.success ? new Error('unexpected') : parsed.error);
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(422);
     expect(res.body).toMatchObject({ error: 'invalid_request' });
   });
 

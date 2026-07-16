@@ -1,52 +1,37 @@
-# slice-NN-<slug>
+# slice-03 report-confirm — 要約の確認・編集・確定
 
-<!--
-  スライス指示書テンプレート（`/brief <slice>` が埋める）
-
-  **これが指示書の正本**（ADR-0006）。issue 本文はポインタだけを書く。
-  作り手の分担:
-    1. ゴール          … PM
-    2. 受け入れテスト  … PM（仕様表から）／パスは AIアーキ
-    3. ファイル範囲    … AIアーキ（技術的な形）
-    4. 貼り付け用の枠  … **リーダー**（このプロジェクトで人間が書く唯一の本物のプロンプト）
-    5. 完了の定義      … 共通。変えない
-    6. 禁止事項        … **リーダー**
--->
+> 指示書の正本（ADR-0006）。issue 本文はポインタのみ。
+> **リーダー記入待ち: §4 固有注意・§6 slice 固有。**
 
 ## 1. ゴール
 
-<この1スライスで何が動けば完了か。1〜2文>
+`POST /reports/:id/confirm` で編集した要約を伴い報告を確定でき（200・confirmed）、確定後は本文・要約が不変（PATCH は 409）で、二重確定も 409。S4 で全項目が編集可能なフォームと「要確認」フラグ・元入力との照合が示され、確定後は編集不可の確定表示へ切り替わる。
 
 ## 2. 受け入れテスト（変更禁止・read-only）
 
-**二層とも書く**（ADR-0018）。片方が空欄の指示書は工程5 で差し戻す。
-
 | 層 | パス | 起動するもの |
 |---|---|---|
-| API | `acceptance/<feature>/<name>.api.spec.ts` | backend |
-| **UI** | `acceptance/<feature>/<name>.ui.spec.ts` | **backend ＋ frontend** |
+| API | `acceptance/reports/confirm.api.spec.ts` | backend |
+| UI | `acceptance/reports/confirm.ui.spec.ts` | backend ＋ frontend |
 
-- golden: `acceptance/golden/<name>.png` ／ または **撮影不可**（理由は仕様表の画面要件）
-- 仕様表: `docs/spec/slice-NN.md`
-
-> **UI spec が「なし」なのは、仕様表の画面要件に「画面なし」と明記されている場合だけ**。
-> ここが空欄の指示書を受け取ったら、実装せずリーダーへ質問として出す（憲法 §3）。
+- golden: 撮影可（未撮影・現状は `confirm.ui.spec.ts` の DOM アサーションで検証・ADR-0008/0018）
+- 仕様表: `docs/spec/slice-03.md`（approved: true）
+- AC: AC-1 編集済み要約で確定（200・confirmed）／AC-2 確定後 PATCH=409（不変）／AC-3 二重確定=409
 
 ## 3. 触ってよいファイル範囲
 
-**この一覧は許可であると同時に予告である**（ADR-0018）。
-**挙げたディレクトリに diff が1行も無いまま完了報告してはならない。テストが緑でも停止して報告する。**
-
-- `apps/service/src/<feature>/` （`*.router.ts` / `*.service.ts` / `*.repository.ts` / `*.schema.ts`）
-- `apps/web/app/<path>/**`
+- `apps/service/src/reports/`
+  - `use-case/confirmReport.ts`
+  - `domain/model/report.ts`（確定・不変化のドメイン規則）・`domain/error/reportErrors.ts`
+  - `interfaceAdapter/api/route/reportRoute.ts` `interfaceAdapter/api/controller/reportController.ts`（confirm エンドポイント）
+- `apps/web/src/features/reports/`（S4 確認・編集・確定 UI／確定表示への切替）
 - 上記範囲の unit テスト
-
-**範囲外**：`acceptance/` `reference-mock/` `docs/` `.claude/` 認証 / 要約 / DB マイグレーション
+- **範囲外**：`acceptance/` `reference-mock/` `docs/` `.claude/` ／ 要約生成（slice-02）／ 一覧（slice-04）／ 認証（slice-06）／ DB マイグレーション
 
 ## 4. 貼り付け用の枠（`/implement` が読む）
 
 ```
-このリポジトリで slice-NN-<slug> を実装します。
+このリポジトリで slice-03 report-confirm を実装します。
 - 触ってよいのは指示書「3. ファイル範囲」のファイルのみ。範囲外は変更禁止。
 - 「2. 受け入れテスト」を全て緑にするのがゴール。テストは既にあります。
   api.spec.ts と ui.spec.ts の両方です。ui.spec.ts は backend と frontend の
@@ -56,7 +41,7 @@
   テストが緑でも完了ではありません。停止して、なぜ触らずに緑になったかを報告してください。
 - commit / push / DB マイグレーションはしないこと。緑になったら停止して報告してください。
 - 不明点はコードを推測で埋めず、リーダーに質問として出してください。
-<ここにこのスライス固有の注意を1〜2行だけ足す（リーダーが記入）。例: バリデーション失敗は 422（Zod/express-validator）>
+確定後の本文・要約は不変（PATCH・再確定は 409）。要約生成そのもの（slice-02）はここで作らない。
 ```
 
 ## 5. 完了の定義（4つとも機械判定・変えない）
@@ -75,4 +60,4 @@
 - 範囲外ファイルの変更
 - 受け入れテスト・`reference-mock/`・`docs/` の変更（＝仕様と answer key）
 - **テストがカバーしない範囲を黙って省略すること。** 質問として出す（憲法 §3）
-- <このスライスで着手してはいけない別スライスの領域（リーダーが記入）>
+- slice-02（要約生成）/ slice-04（一覧）の領域に着手しない

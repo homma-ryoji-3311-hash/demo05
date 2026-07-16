@@ -6,4 +6,4 @@
 | slice_id | 日付 | 救援有無(y/n) | 再作成回数 | 枠消費 | 差し戻し理由 | メンバー |
 |---|---|---|---|---|---|---|
 | slice-01 | 2026-07-16 |  | 0 | 未計測 | なし（Audit: GO-WITH-FIXES） | Honma218（Claude Opus 実装） |
-| slice-02 | 2026-07-16 |  | 0 | 未計測 | なし（Audit: NO-GO だが帰責は上流の acceptance 欠陥。PR #12 で解消済み） | Honma218（Claude Opus 実装） |
+| slice-02 | 2026-07-16 | y | 0 | 未計測 | なし（Audit: NO-GO だが帰責は上流の acceptance 欠陥。PR #12 で解消済み） | Honma218（Claude Opus 実装） |

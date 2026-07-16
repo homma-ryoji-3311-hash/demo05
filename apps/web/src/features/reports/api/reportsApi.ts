@@ -55,3 +55,15 @@ export async function confirmReport(id: string, summary: SummaryDto): Promise<Re
     body: JSON.stringify({ summary }),
   });
 }
+
+/** 前回の確定報告（slice-05）。本文と確定要約だけ＝読み取り専用の参照に必要な分に絞られている。 */
+export interface PreviousReportDto {
+  raw_text: string;
+  summary: SummaryDto | null;
+}
+
+/** 直近の確定報告を取得する（slice-05）。前回が無いのは正常系＝null（backend は 200＋previous: null）。 */
+export async function fetchPrevious(id: string): Promise<PreviousReportDto | null> {
+  const res = await apiFetch<{ previous: PreviousReportDto | null }>(`/reports/${id}/previous`);
+  return res.previous;
+}

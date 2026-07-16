@@ -17,6 +17,16 @@ export interface ReportResponse {
   confirmed_summary: StructuredSummary | null;
 }
 
+/**
+ * 前回参照のレスポンス形（slice-05）。report 全体ではなく本文と確定要約の2キーに絞る。
+ * オラクル(tools/reference-mock-server/server.mjs:160)が意図的に絞っており、読み取り専用の
+ * 参照＝丸写しを誘発しない（spec.md §3.2）という要件がこの形に表れている。
+ */
+export interface PreviousReportResponse {
+  raw_text: string;
+  summary: StructuredSummary | null;
+}
+
 /** HTTP レスポンス形（snake_case）へ変換。オラクルは report オブジェクトをそのまま返す。 */
 function toResponse(report: ReportEntity): ReportResponse {
   const p = report.toPersistence();
@@ -93,13 +103,16 @@ export class ReportController {
 
   /**
    * S3 の前回参照（slice-05）。前回が無いのは正常系＝200＋{ previous: null }（404 にしない・AC-2）。
-   * report を previous に包むのは、受け入れテストが body.previous を読むため。
+   * 返すのは本文と確定要約の2キーのみ（PreviousReportResponse）。report 全体を返さないのは
+   * オラクルが絞っているため＝読み取り専用の参照という要件がレスポンス形に現れている。
    */
   async getPrevious(
     userId: string,
     id: string,
-  ): Promise<{ status: number; body: { previous: ReportResponse | null } }> {
+  ): Promise<{ status: number; body: { previous: PreviousReportResponse | null } }> {
     const previous = await this.getPreviousReport.execute({ userId, id });
-    return { status: 200, body: { previous: previous ? toResponse(previous) : null } };
+    if (!previous) return { status: 200, body: { previous: null } };
+    const p = previous.toPersistence();
+    return { status: 200, body: { previous: { raw_text: p.rawText, summary: p.confirmedSummary } } };
   }
 }

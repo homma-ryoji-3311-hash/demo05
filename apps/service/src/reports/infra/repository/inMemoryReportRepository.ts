@@ -24,6 +24,15 @@ export class InMemoryReportRepository implements ReportRepositoryInterface {
     }
     return null;
   }
+
+  async findLastConfirmedByUser(userId: string, excludeId: string): Promise<ReportEntity | null> {
+    let latest: ReportProps | null = null;
+    for (const r of this.records.values()) {
+      if (r.userId !== userId || r.status !== 'confirmed' || r.id === excludeId) continue;
+      if (latest === null || r.reportDate > latest.reportDate) latest = r;
+    }
+    return latest ? ReportEntity.reconstruct(latest) : null;
+  }
 }
 
 /**

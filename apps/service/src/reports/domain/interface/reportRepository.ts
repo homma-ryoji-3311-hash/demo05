@@ -10,4 +10,9 @@ export interface ReportRepositoryInterface {
   findById(id: string): Promise<ReportEntity | null>;
   /** ユーザーの現在の下書き（status=draft）を返す。無ければ null。S3 の下書き復元に使う。 */
   findDraftByUser(userId: string): Promise<ReportEntity | null>;
+  /**
+   * ユーザーの直近の確定済み報告（status=confirmed）を報告日の降順で1件返す。無ければ null。
+   * S3 の前回参照（slice-05）に使う。excludeId は参照元の報告自身（:id）を候補から除く。
+   */
+  findLastConfirmedByUser(userId: string, excludeId: string): Promise<ReportEntity | null>;
 }

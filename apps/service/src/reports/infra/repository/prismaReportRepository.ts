@@ -39,6 +39,14 @@ export class PrismaReportRepository implements ReportRepositoryInterface {
     return r ? this.toEntity(r) : null;
   }
 
+  async findLastConfirmedByUser(userId: string, excludeId: string): Promise<ReportEntity | null> {
+    const r = await this.prisma.report.findFirst({
+      where: { userId, status: 'confirmed', id: { not: excludeId } },
+      orderBy: { reportDate: 'desc' },
+    });
+    return r ? this.toEntity(r) : null;
+  }
+
   private toEntity(r: {
     id: string;
     userId: string;

@@ -4,6 +4,7 @@ import type { GetDraftUseCase } from '../../../use-case/getDraft.js';
 import type { GetReportUseCase } from '../../../use-case/getReport.js';
 import type { SummarizeReportUseCase } from '../../../use-case/summarizeReport.js';
 import type { ConfirmReportUseCase } from '../../../use-case/confirmReport.js';
+import type { GetPreviousReportUseCase } from '../../../use-case/getPreviousReport.js';
 import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
 
 export interface ReportResponse {
@@ -42,6 +43,7 @@ export class ReportController {
     private readonly summarizeReport: SummarizeReportUseCase,
     private readonly getReport: GetReportUseCase,
     private readonly confirmReport: ConfirmReportUseCase,
+    private readonly getPreviousReport: GetPreviousReportUseCase,
   ) {}
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
@@ -87,5 +89,17 @@ export class ReportController {
     const b = (body ?? {}) as Record<string, unknown>;
     const report = await this.confirmReport.execute({ userId, id, summary: b.summary });
     return { status: 200, body: toResponse(report) };
+  }
+
+  /**
+   * S3 の前回参照（slice-05）。前回が無いのは正常系＝200＋{ previous: null }（404 にしない・AC-2）。
+   * report を previous に包むのは、受け入れテストが body.previous を読むため。
+   */
+  async getPrevious(
+    userId: string,
+    id: string,
+  ): Promise<{ status: number; body: { previous: ReportResponse | null } }> {
+    const previous = await this.getPreviousReport.execute({ userId, id });
+    return { status: 200, body: { previous: previous ? toResponse(previous) : null } };
   }
 }

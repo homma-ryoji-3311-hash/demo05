@@ -14,3 +14,18 @@ model Greeting {
 
   @@map("greetings")
 }
+
+/// 業務報告。フィールドは ReportProps（domain/model/report.ts）と 1:1 で対応する。
+/// report_date は日付そのものではなく報告日の文字列（YYYY-MM-DD）＝ドメインの表現に合わせる。
+/// ai_summary_json / confirmed_summary は 4カテゴリの要約 JSON で、未要約・未確定では NULL。
+model Report {
+  id               String @id
+  userId           String @map("user_id")
+  reportDate       String @map("report_date")
+  rawText          String @map("raw_text")
+  status           String
+  aiSummaryJson    Json?  @map("ai_summary_json")
+  confirmedSummary Json?  @map("confirmed_summary")
+
+  @@map("reports")
+}

@@ -6,16 +6,19 @@ import { appLogger } from '../../../logging/index.js';
 
 /** ドメインエラーの種別(kind) → HTTP ステータスの対応（マッピングはここに一元化する）。 */
 const KIND_TO_STATUS: Record<ErrorKind, number> = {
-  validation: 400,
+  // バリデーション失敗は 422（CLAUDE.md §6。参照モック FastAPI の既定に合わせ、受け入れテストが要求する）。
+  validation: 422,
   not_found: 404,
   conflict: 409,
   unauthorized: 401,
+  forbidden: 403, // 所有権・認可の拒否（他人のデータ・許可外ドメイン等）
+  external: 502, // 外部依存（Summarizer 等）の失敗。Bad Gateway
   internal: 500,
 };
 
 /**
  * アプリ共通・唯一のエラーハンドリング。すべてのルートのエラーはここに集約される。
- * - ZodError（境界のリクエスト検証失敗）→ 400
+ * - ZodError（境界のリクエスト検証失敗）→ 422
  * - DomainError（ドメインエラー）→ kind を KIND_TO_STATUS で HTTP ステータスに変換
  * - HttpException（境界で明示的に投げる HTTP エラー）→ 指定ステータス
  * - それ以外 → 500（ログに残す）
@@ -28,7 +31,8 @@ export function errorHandler(err: unknown, _req: Request, res: Response, next: N
     return;
   }
   if (err instanceof ZodError) {
-    res.status(400).json({ error: 'invalid_request', details: err.issues });
+    // 境界のリクエスト検証失敗も 422（CLAUDE.md §6。400 では受け入れテストが赤い）。
+    res.status(422).json({ error: 'invalid_request', details: err.issues });
     return;
   }
   if (isDomainError(err)) {

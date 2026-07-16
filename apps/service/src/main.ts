@@ -6,9 +6,21 @@ import { GreetingRepository } from './template/infra/repository/greetingReposito
 
 const env = loadEnv();
 
+// 永続化の選択:
+//   既定 = Prisma（本番・DB 接続）。マイグレーションの実行は統合役（CLAUDE.md §1-2）。
+//   PERSISTENCE=memory = インメモリ（DB 不要）。受け入れテストのローカル緑検証に使う。
+// 各スライスは自分の feature リポジトリ（InMemory/Prisma）をここで注入する（現状は greeting のみ）。
+const persistence = process.env.PERSISTENCE === 'memory' ? 'memory' : 'prisma';
+
+// greeting リポジトリはデモの no-op 実装で prisma を参照しないため、
+// memory モードでも PrismaService を構築するだけ（connect はしない）でよい。
 const prisma = new PrismaService(env.DATABASE_URL);
 
-await prisma.connect();
+if (persistence === 'prisma') {
+  await prisma.connect();
+} else {
+  appLogger.info('persistence=memory: DB 接続なしで起動（各 feature は InMemory リポジトリを注入する）');
+}
 
 const app = createApp({
   greetingRepository: new GreetingRepository(prisma),

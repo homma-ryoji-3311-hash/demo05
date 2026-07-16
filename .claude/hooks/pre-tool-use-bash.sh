@@ -16,17 +16,23 @@ BRANCH="$(current_branch)"   # unborn/detached 安全（lib.sh）。空文字は
 WORK_BRANCH=0
 [[ -n "$(slice_branch_layer "$BRANCH")" ]] && WORK_BRANCH=1   # 番号必須（lib.sh）
 
+# 作業ブランチに加え、土台/harness の chore/* ブランチも agent の commit / 素の push を許可する
+# （案a・2026-07-16 PM 決定。方式B で土台インフラを main へ先行 land する運用に対応）。
+# main を進める・force・delete・refspec 指定の push は下のガードで引き続きブロックされる（変更なし）。
+COMMITTABLE="$WORK_BRANCH"
+[[ "$BRANCH" =~ ^chore/.+ ]] && COMMITTABLE=1
+
 if [[ "$CMD" =~ (^|[[:space:];&|])git[[:space:]]+commit ]]; then
-  if [[ "$WORK_BRANCH" -ne 1 ]]; then
+  if [[ "$COMMITTABLE" -ne 1 ]]; then
     deny "BLOCKED: git commit（現在ブランチ: ${BRANCH}）。
-commit が許可されるのは作業ブランチ（feature/slice-NN / spec/slice-NN、NN=/board 採番）のみ（CLAUDE.md §1-1）。
+commit が許可されるのは作業ブランチ（feature/slice-NN / spec/slice-NN、NN=/board 採番）と土台の chore/* のみ（CLAUDE.md §1-1）。
 main を進める操作は統合役ただ1人。/pickup で作業ブランチを切ってから作業すること。"
   fi
 fi
 
 if [[ "$CMD" =~ (^|[[:space:];&|])git[[:space:]]+push ]]; then
   PUSH_ARGS="${CMD#*push}"
-  if [[ "$WORK_BRANCH" -ne 1 ]]; then
+  if [[ "$COMMITTABLE" -ne 1 ]]; then
     deny "BLOCKED: git push（現在ブランチ: ${BRANCH}）。
 push が許可されるのは作業ブランチ（feature/slice-NN / spec/slice-NN、NN=/board 採番）からのみ（CLAUDE.md §1-1）。"
   fi

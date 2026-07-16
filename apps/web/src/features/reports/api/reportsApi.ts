@@ -44,3 +44,14 @@ export interface SummaryDto {
 export async function summarizeReport(id: string): Promise<SummaryDto> {
   return apiFetch<SummaryDto>(`/reports/${id}/summarize`, { method: 'POST' });
 }
+
+/**
+ * 報告を確定する（slice-03）。人が編集した要約を確定値として送る。
+ * 二重確定・確定後の変更は backend が 409 にする＝apiFetch が例外にする（確定後不変）。
+ */
+export async function confirmReport(id: string, summary: SummaryDto): Promise<ReportDto> {
+  return apiFetch<ReportDto>(`/reports/${id}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ summary }),
+  });
+}

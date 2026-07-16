@@ -1,0 +1,13 @@
+import type { ReportEntity } from '../model/report.js';
+
+/**
+ * 報告リポジトリのインターフェース（slice-01 スコープ）。実装は infra/repository/ に置き、
+ * app.ts（コンポジションルート）で注入する（router → service(use-case) → repository の一方向）。
+ * 一覧・前回参照など後続スライスのメソッドは、そのスライスで追加する。
+ */
+export interface ReportRepositoryInterface {
+  save(report: ReportEntity): Promise<void>; // upsert
+  findById(id: string): Promise<ReportEntity | null>;
+  /** ユーザーの現在の下書き（status=draft）を返す。無ければ null。S3 の下書き復元に使う。 */
+  findDraftByUser(userId: string): Promise<ReportEntity | null>;
+}

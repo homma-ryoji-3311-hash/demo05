@@ -24,12 +24,22 @@ export class InMemoryReportRepository implements ReportRepositoryInterface {
     }
     return null;
   }
+
+  /** 所有者で絞り、日付の新しい順に返す（slice-04 AC-1）。 */
+  async findAllByUser(userId: string): Promise<ReportEntity[]> {
+    return [...this.records.values()]
+      .filter((r) => r.userId === userId)
+      .sort((a, b) => b.reportDate.localeCompare(a.reportDate))
+      .map((r) => ReportEntity.reconstruct(r));
+  }
 }
 
 /**
  * dev/受け入れ用のシード（合成データのみ）。オラクル(tools/reference-mock-server/server.mjs)と同一。
  * - r_seed_confirmed: staff01 の確定済み報告。AC-3（確定後不変 → 409）の対象。
  * - r_seed_draft:     staff01 の下書き。S3 の「再訪時に下書きが復元される」（ui.spec）検証用。
+ * - r_other:          staff02（他人）の確定済み報告。一覧に混ざらないこと・詳細が 403 になることの検証用
+ *                     （slice-04 AC-1/AC-3・slice-06）。これが無いと AC-3 は 403 ではなく 404 になる。
  */
 export function seedReports(repo: InMemoryReportRepository): void {
   void repo.save(
@@ -52,6 +62,17 @@ export function seedReports(repo: InMemoryReportRepository): void {
       status: 'draft',
       aiSummaryJson: null,
       confirmedSummary: null,
+    }),
+  );
+  void repo.save(
+    ReportEntity.reconstruct({
+      id: 'r_other',
+      userId: 'staff02',
+      reportDate: '2026-07-14',
+      rawText: '他スタッフの報告。',
+      status: 'confirmed',
+      aiSummaryJson: { incidents: [], achievements: [], issues: [], skills: [] },
+      confirmedSummary: { incidents: [], achievements: [], issues: [], skills: [] },
     }),
   );
 }

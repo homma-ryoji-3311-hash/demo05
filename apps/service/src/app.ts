@@ -15,9 +15,10 @@ import type { SummarizerInterface } from './reports/domain/interface/summarizer.
 import { CreateDraftUseCase } from './reports/use-case/createDraft.js';
 import { UpdateDraftUseCase } from './reports/use-case/updateDraft.js';
 import { GetDraftUseCase } from './reports/use-case/getDraft.js';
-import { GetReportUseCase } from './reports/use-case/getReport.js';
 import { SummarizeReportUseCase } from './reports/use-case/summarizeReport.js';
 import { ConfirmReportUseCase } from './reports/use-case/confirmReport.js';
+import { ListReportsUseCase } from './reports/use-case/listReports.js';
+import { LoadOwnedReportUseCase } from './reports/use-case/loadOwnedReport.js';
 import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
@@ -50,8 +51,9 @@ export function createApp(deps: AppDependencies): express.Express {
     new UpdateDraftUseCase(reportRepository),
     new GetDraftUseCase(reportRepository),
     new SummarizeReportUseCase(reportRepository, summarizer),
-    new GetReportUseCase(reportRepository),
     new ConfirmReportUseCase(reportRepository),
+    new ListReportsUseCase(reportRepository),
+    new LoadOwnedReportUseCase(reportRepository),
   );
 
   const app = express();

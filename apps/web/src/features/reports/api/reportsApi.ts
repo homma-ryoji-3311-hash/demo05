@@ -1,12 +1,25 @@
 import { apiFetch } from '@/common/api/client';
 
-/** backend の業務報告レスポンス（snake_case）。slice-01 で使う範囲のみ。 */
+/** backend の業務報告レスポンス（snake_case）。 */
 export interface ReportDto {
   id: string;
   user_id: string;
   report_date: string;
   raw_text: string;
   status: string;
+  /** 確定済みのときだけ中身が入る（slice-04 の詳細表示で使う）。 */
+  confirmed_summary?: SummaryDto | null;
+}
+
+/** 自分の報告一覧（slice-04 AC-1）。他人の報告は backend が除く。 */
+export async function fetchReports(): Promise<ReportDto[]> {
+  const res = await apiFetch<{ reports: ReportDto[] }>('/reports');
+  return res.reports;
+}
+
+/** 報告1件の詳細（slice-04 AC-2）。他人の報告は backend が 403 にする＝apiFetch が例外にする。 */
+export async function fetchReport(id: string): Promise<ReportDto> {
+  return apiFetch<ReportDto>(`/reports/${id}`);
 }
 
 /** 現在の下書きを取得（無ければ null）。S3 の再訪時復元に使う。 */

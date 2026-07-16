@@ -1,5 +1,6 @@
 import json
 import socket
+import subprocess
 import sys
 import time
 
@@ -91,6 +92,32 @@ def test_子孫プロセスまで殺す(pm, tmp_path):
     with socket.socket() as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(("localhost", port))  # 解放されていれば bind できる
+
+
+def test_子に親の_stdin_を継承させない(pm, tmp_path, monkeypatch):
+    """stdin=DEVNULL を渡していること。**この1行を消すと harness が全く起動しなくなる。**
+
+    親（MCP stdio サーバー）の stdin は Claude Code との JSON-RPC パイプ。既定（stdin=None）だと
+    子がそれを継承し、`tsx watch` のような対話キー入力を待つ dev サーバーがワーカーを spawn せずに
+    停止する——bootTimeoutMs をいくら伸ばしても ready にならない。
+
+    ふるまい（子が stdin を読んで即 EOF になる）で書くと**空振り合格**になる: pytest は既定の
+    capture=fd で親の fd 0 を devnull へ差し替えるため、修正が無くても子は EOF を見てしまう。
+    そのため Popen へ渡す kwargs を直接固定する。ふるまいでの再現は PR の repro を参照。
+    """
+    # stdin の値**だけ**を拾う。kwargs 丸ごとを保持すると、失敗時に pytest が env を展開して
+    # 全環境変数（トークン類）を CI ログへ吐く（憲法 §1-7）。
+    stdin_args: list = []
+    real_popen = subprocess.Popen
+
+    def spy(cmd, **kw):
+        stdin_args.append(kw.get("stdin", "<absent>"))
+        return real_popen(cmd, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", spy)
+    assert pm.start(tmp_path, _cfg(f"{sys.executable} -c 'import time; time.sleep(5)'")).started
+    assert stdin_args, "Popen が呼ばれていない"
+    assert stdin_args[0] == subprocess.DEVNULL
 
 
 def test_設定ファイル経由で起動できる(pm, tmp_path):

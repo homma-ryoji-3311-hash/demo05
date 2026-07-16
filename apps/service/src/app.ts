@@ -10,9 +10,18 @@ import { requestContext } from './common/interfaceAdapter/api/middlewares/reques
 import { createAccessLogger } from './common/interfaceAdapter/api/middlewares/access-logger.js';
 import { createDocsRouter } from './common/interfaceAdapter/api/openapi/route/docsRoute.js';
 import { greetingContractGroup } from './template/interfaceAdapter/api/contract/greetingContract.js';
+import type { ReportRepositoryInterface } from './reports/domain/interface/reportRepository.js';
+import { CreateDraftUseCase } from './reports/use-case/createDraft.js';
+import { UpdateDraftUseCase } from './reports/use-case/updateDraft.js';
+import { GetDraftUseCase } from './reports/use-case/getDraft.js';
+import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
+import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
+import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
+  /** 省略時は seed 済みのインメモリ実装を使う（既存テストの createApp 呼び出しを不変に保つため）。 */
+  reportRepository?: ReportRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -23,10 +32,16 @@ export interface AppDependencies {
  */
 export function createApp(deps: AppDependencies): express.Express {
   const { greetingRepository } = deps;
+  const reportRepository = deps.reportRepository ?? defaultReportRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
   const greetingController = new GreetingController(new GetGreetingUseCase(greetingRepository, generateId, clock));
+  const reportController = new ReportController(
+    new CreateDraftUseCase(reportRepository, generateId),
+    new UpdateDraftUseCase(reportRepository),
+    new GetDraftUseCase(reportRepository),
+  );
 
   const app = express();
   app.use(requestContext());
@@ -36,7 +51,16 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use(createAccessLogger());
   app.use('/api', createHealthRouter());
   app.use('/api/hello', createGreetingRouter({ greetingController }));
+  // 受け入れテスト（acceptance）は root を叩く（案A・answer key と HTTP 等価）。overview §3 に合わせ root へ。
+  app.use('/reports', createReportRouter({ reportController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
   app.use(errorHandler);
   return app;
+}
+
+/** reportRepository 未注入時の既定（seed 済みインメモリ）。既存テストの createApp 呼び出しを不変に保つ。 */
+function defaultReportRepository(): ReportRepositoryInterface {
+  const repo = new InMemoryReportRepository();
+  seedReports(repo);
+  return repo;
 }

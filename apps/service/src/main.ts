@@ -3,6 +3,9 @@ import { loadEnv } from './common/config/env.js';
 import { appLogger } from './common/logging/index.js';
 import { PrismaService } from './common/infra/prisma/prismaService.js';
 import { GreetingRepository } from './template/infra/repository/greetingRepository.js';
+import type { ReportRepositoryInterface } from './reports/domain/interface/reportRepository.js';
+import { PrismaReportRepository } from './reports/infra/repository/prismaReportRepository.js';
+import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
 
 const env = loadEnv();
 
@@ -16,14 +19,20 @@ const persistence = process.env.PERSISTENCE === 'memory' ? 'memory' : 'prisma';
 // memory モードでも PrismaService を構築するだけ（connect はしない）でよい。
 const prisma = new PrismaService(env.DATABASE_URL);
 
+let reportRepository: ReportRepositoryInterface;
 if (persistence === 'prisma') {
   await prisma.connect();
+  reportRepository = new PrismaReportRepository(prisma);
 } else {
-  appLogger.info('persistence=memory: DB 接続なしで起動（各 feature は InMemory リポジトリを注入する）');
+  const mem = new InMemoryReportRepository();
+  seedReports(mem);
+  reportRepository = mem;
+  appLogger.info('persistence=memory: DB 接続なしで起動（InMemoryReportRepository を注入）');
 }
 
 const app = createApp({
   greetingRepository: new GreetingRepository(prisma),
+  reportRepository,
 });
 
 const server = app.listen(env.PORT, () => {

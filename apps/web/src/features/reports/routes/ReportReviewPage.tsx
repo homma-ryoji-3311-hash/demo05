@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { confirmReport, fetchDraft, summarizeReport, type ReportDto, type SummaryDto } from '../api/reportsApi';
+import {
+  confirmReport,
+  fetchDraft,
+  summarizeReport,
+  updateDraft,
+  type ReportDto,
+  type SummaryDto,
+} from '../api/reportsApi';
 
 /**
  * S4 AI要約 確認・編集（slice-02 の要約表示 ＋ slice-03 の編集・確定）。
@@ -45,6 +52,8 @@ function countNeedsReview(summary: SummaryDto): number {
 
 export function ReportReviewPage() {
   const [text, setText] = useState('');
+  // 最後に永続化された本文。text と食い違っていれば未保存の編集がある。
+  const [savedText, setSavedText] = useState('');
   const [reportId, setReportId] = useState<string | null>(null);
   // null = まだ要約していない。要約前に編集欄を出さない（要約対象が無いフォームになるため）。
   const [summary, setSummary] = useState<SummaryDto | null>(null);
@@ -60,6 +69,7 @@ export function ReportReviewPage() {
         if (!active) return;
         if (draft) {
           setText(draft.raw_text);
+          setSavedText(draft.raw_text);
           setReportId(draft.id);
           setDraftState('ready');
         } else {
@@ -91,13 +101,19 @@ export function ReportReviewPage() {
   const onConfirm = (): void => {
     if (!reportId) return;
     setConfirmState('loading');
-    void confirmReport(reportId, summary ?? EMPTY_SUMMARY)
+    // 本文が編集されていれば、確定の前に保存する。確定後は PATCH が 409 になるので（AC-2）、
+    // ここで保存しないと編集は黙って捨てられ、しかも回復できない。
+    const saveBody: Promise<unknown> = text === savedText ? Promise.resolve() : updateDraft(reportId, text);
+    void saveBody
+      .then(() => confirmReport(reportId, summary ?? EMPTY_SUMMARY))
       .then((report) => {
+        setSavedText(text);
         setConfirmed(report.status === 'confirmed');
         setConfirmState('idle');
       })
       .catch(() => {
-        // 409（二重確定・確定後の変更）を含む失敗。編集内容は state に残す。
+        // 本文の保存に失敗した場合はここで止まる＝未保存のまま確定しない。
+        // 409（二重確定・確定後の変更）も同じ経路。編集内容は state に残す。
         setConfirmState('failed');
       });
   };

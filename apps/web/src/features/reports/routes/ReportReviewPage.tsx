@@ -16,24 +16,31 @@ const CATEGORIES: ReadonlyArray<{ key: keyof SummaryDto; label: string }> = [
 ];
 
 type SummarizeState = 'idle' | 'loading' | 'failed';
+/** 下書きの読み込み状態。ready になるまで要約できない（要約対象が確定していないため）。 */
+type DraftState = 'loading' | 'ready' | 'absent';
 
 export function ReportReviewPage() {
   const [text, setText] = useState('');
   const [reportId, setReportId] = useState<string | null>(null);
   const [summary, setSummary] = useState<SummaryDto | null>(null);
   const [state, setState] = useState<SummarizeState>('idle');
+  const [draftState, setDraftState] = useState<DraftState>('loading');
 
   useEffect(() => {
     let active = true;
     void fetchDraft()
       .then((draft: ReportDto | null) => {
-        if (active && draft) {
+        if (!active) return;
+        if (draft) {
           setText(draft.raw_text);
           setReportId(draft.id);
+          setDraftState('ready');
+        } else {
+          setDraftState('absent');
         }
       })
       .catch(() => {
-        /* 復元失敗は無視（要約対象が無いだけ。本文は空のまま） */
+        if (active) setDraftState('absent');
       });
     return () => {
       active = false;
@@ -41,10 +48,7 @@ export function ReportReviewPage() {
   }, []);
 
   const onSummarize = (): void => {
-    if (!reportId) {
-      setState('failed');
-      return;
-    }
+    if (!reportId) return; // 読み込み前は押せない（ボタンが disabled）
     setState('loading');
     void summarizeReport(reportId)
       .then((result) => {
@@ -66,18 +70,21 @@ export function ReportReviewPage() {
       </label>
       <textarea id="review-body" value={text} readOnly className="min-h-32 w-full rounded border bg-gray-50 p-2" />
 
+      {/* 下書きを読み込むまで押せない。押せてしまうと、要約対象が未確定のまま失敗表示になる。 */}
       <button
         type="button"
         onClick={onSummarize}
-        disabled={state === 'loading'}
+        disabled={draftState !== 'ready' || state === 'loading'}
         className="mt-3 rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
       >
         要約する
       </button>
 
       <p role="status" aria-live="polite" className="mt-2 text-sm text-gray-600">
-        {state === 'loading' && '要約中です'}
-        {state === 'failed' && '要約に失敗しました。本文は保持しています。再試行してください'}
+        {draftState === 'loading' && '下書きを読み込んでいます'}
+        {draftState === 'absent' && '要約できる下書きがありません'}
+        {draftState === 'ready' && state === 'loading' && '要約中です'}
+        {draftState === 'ready' && state === 'failed' && '要約に失敗しました。本文は保持しています。再試行してください'}
       </p>
 
       {summary && (

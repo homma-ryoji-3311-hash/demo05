@@ -3,6 +3,7 @@ import type { UpdateDraftUseCase } from '../../../use-case/updateDraft.js';
 import type { GetDraftUseCase } from '../../../use-case/getDraft.js';
 import type { GetReportUseCase } from '../../../use-case/getReport.js';
 import type { SummarizeReportUseCase } from '../../../use-case/summarizeReport.js';
+import type { ConfirmReportUseCase } from '../../../use-case/confirmReport.js';
 import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
 
 export interface ReportResponse {
@@ -30,7 +31,7 @@ function toResponse(report: ReportEntity): ReportResponse {
 }
 
 /**
- * HTTP ⇔ ユースケースの変換のみ（slice-01: 作成・更新・下書き取得／slice-02: 要約・取得）。
+ * HTTP ⇔ ユースケースの変換のみ（slice-01: 作成・更新・下書き取得／slice-02: 要約・取得／slice-03: 確定）。
  * Express の Request/Response には依存しない（戻り値を route が送出する）。
  */
 export class ReportController {
@@ -40,6 +41,7 @@ export class ReportController {
     private readonly getDraft: GetDraftUseCase,
     private readonly summarizeReport: SummarizeReportUseCase,
     private readonly getReport: GetReportUseCase,
+    private readonly confirmReport: ConfirmReportUseCase,
   ) {}
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
@@ -74,5 +76,16 @@ export class ReportController {
   async summarize(userId: string, id: string): Promise<{ status: number; body: StructuredSummary }> {
     const summary = await this.summarizeReport.execute({ userId, id });
     return { status: 200, body: summary };
+  }
+
+  /**
+   * 確定（slice-03）。body.summary が編集後の要約。返すのは report オブジェクト
+   * （status=confirmed・confirmed_summary を受け入れテストが読む）。
+   * 二重確定は use-case の ReportConfirmedError を error-handler が 409 に変換する。
+   */
+  async confirm(userId: string, id: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
+    const b = (body ?? {}) as Record<string, unknown>;
+    const report = await this.confirmReport.execute({ userId, id, summary: b.summary });
+    return { status: 200, body: toResponse(report) };
   }
 }

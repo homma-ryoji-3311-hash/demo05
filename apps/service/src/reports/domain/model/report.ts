@@ -21,10 +21,30 @@ export interface ReportProps {
   confirmedSummary: StructuredSummary | null;
 }
 
+/** 確定要約の4カテゴリ。順序はレスポンス・検証の両方で使う。 */
+const SUMMARY_KEYS = ['incidents', 'achievements', 'issues', 'skills'] as const;
+
+/** 確定要約の形（4カテゴリ・文字列配列）を検証して取り込む。崩れていれば 422（CLAUDE.md §6）。 */
+function toStructuredSummary(value: unknown): StructuredSummary {
+  if (typeof value !== 'object' || value === null) {
+    throw new ReportValidationError('summary is required');
+  }
+  const src = value as Record<string, unknown>;
+  const summary = {} as StructuredSummary;
+  for (const key of SUMMARY_KEYS) {
+    const items = src[key];
+    if (!Array.isArray(items) || items.some((item) => typeof item !== 'string')) {
+      throw new ReportValidationError(`summary.${key} must be an array of strings`);
+    }
+    summary[key] = [...(items as string[])];
+  }
+  return summary;
+}
+
 /**
  * 業務報告エンティティ。
  * slice-01 スコープ: 下書き作成・本文更新・確定後不変の判定まで。
- * slice-02 で要約の保持(applySummary)を追加。確定(confirm)は slice-03 で足す。
+ * slice-02 で要約の保持(applySummary)を追加。slice-03 で確定(confirm)を追加。
  */
 export class ReportEntity {
   private constructor(
@@ -32,9 +52,9 @@ export class ReportEntity {
     private readonly _userId: string,
     private readonly _reportDate: string,
     private _rawText: string,
-    private readonly _status: ReportStatus,
+    private _status: ReportStatus,
     private _aiSummaryJson: StructuredSummary | null,
-    private readonly _confirmedSummary: StructuredSummary | null,
+    private _confirmedSummary: StructuredSummary | null,
   ) {}
 
   get id(): string {
@@ -90,6 +110,16 @@ export class ReportEntity {
   /** 要約結果を保持する（slice-02）。status は変えない＝下書きは draft のまま（確定は slice-03 の confirm）。 */
   applySummary(summary: StructuredSummary): void {
     this._aiSummaryJson = summary;
+  }
+
+  /**
+   * 編集後の要約を確定値として保存し、draft → confirmed に遷移する（slice-03 AC-1）。
+   * 確定済みかどうかの判定は use-case が行う（二重確定・確定後の本文更新は 409）。
+   * ai_summary_json は AI が出した原文として残す＝人が編集した確定値と対比できる。
+   */
+  confirm(summary: unknown): void {
+    this._confirmedSummary = toStructuredSummary(summary);
+    this._status = 'confirmed';
   }
 
   toPersistence(): ReportProps {

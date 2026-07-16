@@ -17,6 +17,7 @@ import { UpdateDraftUseCase } from './reports/use-case/updateDraft.js';
 import { GetDraftUseCase } from './reports/use-case/getDraft.js';
 import { GetReportUseCase } from './reports/use-case/getReport.js';
 import { SummarizeReportUseCase } from './reports/use-case/summarizeReport.js';
+import { ConfirmReportUseCase } from './reports/use-case/confirmReport.js';
 import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
@@ -50,6 +51,7 @@ export function createApp(deps: AppDependencies): express.Express {
     new GetDraftUseCase(reportRepository),
     new SummarizeReportUseCase(reportRepository, summarizer),
     new GetReportUseCase(reportRepository),
+    new ConfirmReportUseCase(reportRepository),
   );
 
   const app = express();

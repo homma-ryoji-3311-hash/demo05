@@ -50,6 +50,22 @@ reports.set('r_other', {
   confirmed_summary: { incidents: [], achievements: [], issues: [], skills: [] },
 });
 
+// slice-08 検証用: 合成マスター元データ（消費者 seam の入力。突合=slice-11/12 は後続で実データを埋める）。
+// AC-2 のため数値を含めない（数値創作なしの検証源）。
+const masters = new Map([
+  [
+    'staff01',
+    {
+      staff_name: 'テスト太郎',
+      summary_json: { achievements: ['ダッシュボードの改修を担当'], skills: ['フロントエンド'], issues: [] },
+    },
+  ],
+]);
+// slice-08: 生成済みスキルシート（再生成で新 id・旧は残す＝非破壊）。履歴一覧の観測は slice-09。
+const sheets = new Map();
+let sheetSeq = 0;
+const nextSheetId = () => `sk_${String(++sheetSeq).padStart(4, '0')}`;
+
 const PORT = Number(process.env.PORT ?? 8000);
 const json = (res, code, body) => {
   res.writeHead(code, { 'content-type': 'application/json' });
@@ -79,6 +95,16 @@ const summarize = (raw) => {
     skills: /ダッシュボード|フロント|改修/.test(text) ? ['フロントエンド'] : [],
   };
 };
+
+// slice-08 AI言い換え（決定的フェイク）: マスターを固定スキーマ（アンカー対応）へ言い換える。
+// 数値・事実は創作しない＝抽出/言い換えのみ（入力に数値が無ければ出力にも無い・AC-2）。
+const paraphraseSkillsheet = (m) => ({
+  career_summary: (m.summary_json.achievements ?? []).map((a) => `${a}（職務経歴）`),
+  skills: [...(m.summary_json.skills ?? [])],
+  issues: [...(m.summary_json.issues ?? [])],
+});
+const yyyymmdd = (d) =>
+  `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -119,6 +145,24 @@ const server = createServer(async (req, res) => {
       draft: draft ? { id: draft.id } : null,
       links: { new_report: '/reports/new', drafts: draft ? `/reports/${draft.id}` : null },
     });
+  }
+
+  // slice-08: POST /skill-sheets（生成）。任意 staff_id（省略=自分）。他人対象は 403。
+  if (hit('POST', /^\/skill-sheets$/)) {
+    const body = await readBody(req);
+    const target = body && typeof body.staff_id === 'string' && body.staff_id.length > 0 ? body.staff_id : uid;
+    if (target !== uid) return json(res, 403, { error: 'forbidden' }); // 他人のマスターは対象にできない（deny-by-default）
+    const master = masters.get(uid);
+    if (!master) return json(res, 404, { error: 'no_master_data' });
+    // データ組立（seed から決定的取得）→ AI言い換え（固定スキーマ・数値創作なし）→ テンプレート反映（省略・メタのみ）
+    const content = paraphraseSkillsheet(master);
+    const now = process.env.SKILLSHEET_NOW ? new Date(process.env.SKILLSHEET_NOW) : new Date();
+    const id = nextSheetId();
+    const filename = `${master.staff_name}_スキルシート_${yyyymmdd(now)}.xlsx`;
+    const file_url = `https://synthetic-storage.test/skill-sheets/${id}?sig=synthetic`;
+    const sheet = { id, staff_id: uid, filename, file_url, created_at: now.toISOString(), content };
+    sheets.set(id, sheet); // 再生成は新 id・旧は残す（非破壊）
+    return json(res, 201, sheet);
   }
 
   // slice-01 AC-1/AC-4: POST /reports
@@ -210,5 +254,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`[reference-mock] Phase1(slice-01..07) oracle listening on http://localhost:${PORT}`);
+  console.log(`[reference-mock] Phase1(slice-01..07)+slice-08 oracle listening on http://localhost:${PORT}`);
 });

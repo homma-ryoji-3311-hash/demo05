@@ -95,6 +95,33 @@ ok   - main 上での apps/service/ 書込は依然 block
 
 **これで工程9b が初めて実行可能になる。** ADR-0014 の定義以来、このプロジェクトで一度も走っていない工程である。
 
+### 【重要】緩和が fail-open を露出させた — Phase A で発見・同 PR で修正
+
+**「あの4行は冗長」という当初の分析は誤りだった。**
+
+本ドキュメントは当初「main 上での作業は commit / push / ファイル書込の3層が既に止めているから checkout ガードは冗長」と書いた。**しかしその3層はすべて「コマンド送信時のブランチ」で判定する。** したがって移動を先に挟まれると効かない:
+
+```
+現在ブランチ: chore/x（COMMITTABLE=1）から複合コマンドを投げる
+
+素通り : git checkout main && git push              <- main へ push できる
+素通り : git checkout main && git commit -m x
+素通り : git checkout main; git push
+素通り : git checkout main && git commit -m x && git push
+```
+
+素の `git push` は `PUSH_ARGS` が空になるため main/force/refspec のどのガードにも当たらず、**upstream の main へ push される**。CLAUDE.md §1-1 の絶対禁止を破れる。
+
+**削除した checkout ガードは、この経路を偶然塞いでいた。** 本来の目的（main 上での作業防止）とは別に、複合コマンドで main へ移動する経路ごと止めていたためである。
+
+発見の経緯: Phase A 再検証で「3層が本当に止めるか」を実際に踏んだところ、main 上での commit が **hook ではなく git のファイルロックエラーで失敗**した。hook が止めていれば `BLOCKED:` が出るはずで、出ないこと自体が兆候だった。**偶然の Windows エラーが無ければ、この穴に気づかずマージしていた可能性が高い。**
+
+**対策（同 PR に追加）**: 移動そのものは許可し、**移動と変更操作（commit / push / merge）を同一コマンドに束ねること**を禁じた。危険なのは移動ではなく束ねること。工程9b は素の checkout を単体で叩くため影響を受けない。
+
+回帰テスト: `.claude/hooks/tests/main-guard-compound-evasion.test.sh`（2つの送信元ブランチ × 12ケース）。
+
+**教訓**: 「このガードは冗長だから消してよい」という判断は、**冗長性の根拠となる他のガードが、どの時点の状態で判定しているか**まで確認しないと成立しない。3層あっても、3層すべてが同じ前提（送信時のブランチ）に乗っていれば、その前提を崩す一手で全部が無効になる。
+
 ### 適用時に発覚した別件（テストが環境で嘘をつく）
 
 PM が PowerShell から `bash .claude/hooks/tests/destructive-checkout-force.test.sh` を実行したところ、**全ガードが素通り（exit 0）**という結果が出た。しかし同じテストを Git Bash で走らせると 20/20 PASS し、実環境の hook も正常だった（上の実測）。

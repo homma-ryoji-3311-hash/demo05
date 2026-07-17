@@ -78,11 +78,6 @@ if [[ "$CMD" =~ (prisma[[:space:]]+migrate|typeorm[[:space:]]+migration|knex[[:s
 実行は統合役、GO/NO-GO 判断は PM（代理: リーダー1名・記録必須。ADR-0007）。差分に必要性を書いて停止すること。"
 fi
 
-# --- main ブランチ上での作業（高速フェイル。正本は GitHub ブランチ保護） ---
-if [[ "$CMD" =~ git[[:space:]]+(checkout|switch)[[:space:]]+(main|master)([[:space:]]|$) ]]; then
-  deny "BLOCKED: main への checkout。作業は feature/slice-<issue> のみ（CLAUDE.md §1）。"
-fi
-
 # --- 実データ・DBダンプの持ち込み（合成フィクスチャのみ。§6 機密データ） ---
 if [[ "$CMD" =~ (pg_dump|mysqldump) ]] \
 || [[ "$CMD" =~ fixtures/real ]]; then

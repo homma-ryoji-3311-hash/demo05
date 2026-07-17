@@ -1,7 +1,7 @@
 # hook 欠陥: main への checkout ガードが逆を向いていた（統合役の工程9b をブロック・強制 checkout を素通し）
 
 > 起票日: 2026-07-17 / 発覚: PR #23 のマージ時（`/integrate 23` Phase B）
-> 状態: **半分修正済み。** 厳格化（`-f` 素通しの穴）は本 PR で修正。**緩和（素の checkout 許可）は人間の手が要る。**
+> 状態: **解決済み。** 厳格化（`-f` 素通しの穴）は PR #29。**緩和（素の checkout 許可）は人間が適用**（PR #31・下記「適用の記録」）。
 
 ## 症状
 
@@ -73,7 +73,37 @@ ok   - main 上での apps/service/ 書込は依然 block
 
 素の checkout は移動にすぎないため対象外。
 
-## 未了（人間の手が要る）
+## 適用の記録（2026-07-17・PR #31）
+
+**緩和は人間（PM）が自分の手で適用した。** 下記の差分を削除し、エージェントはその結果を検証・コミットしただけである。
+
+適用後の実測（実環境の hook を直接叩いた結果）:
+
+```
+=== 緩和の目的: 工程9b が開くか ===
+  allow (exit 0) : git checkout main   <- 工程9b が実行可能に
+  allow (exit 0) : git switch main
+  allow (exit 0) : git checkout master
+
+=== 3層の保護が無傷か ===
+  block (exit 2) : git checkout -f main
+  block (exit 2) : git push --force origin main
+  block (exit 2) : git reset --hard origin/main
+  block (exit 2) : rm -rf /tmp/x
+  block (exit 2) : prisma migrate dev
+```
+
+**これで工程9b が初めて実行可能になる。** ADR-0014 の定義以来、このプロジェクトで一度も走っていない工程である。
+
+### 適用時に発覚した別件（テストが環境で嘘をつく）
+
+PM が PowerShell から `bash .claude/hooks/tests/destructive-checkout-force.test.sh` を実行したところ、**全ガードが素通り（exit 0）**という結果が出た。しかし同じテストを Git Bash で走らせると 20/20 PASS し、実環境の hook も正常だった（上の実測）。
+
+症状から、`run_hook` が hook へ渡す stdin が空になり `PAYLOAD=""` → `CMD=""` → どの正規表現にも当たらず `exit 0` に落ちたと推測される。PM の出力で唯一 block していたのが `protect-paths.sh`（stdin ではなく `file_path` を見る別ファイル）だったことと整合する。
+
+**ハーネスのテストが環境依存で、しかも fail-open 方向に嘘をつく。** #24（Windows での lint 誤検知）と同じ class だが、あちらは「安全側に嘘をつく（狼少年）」のに対し、こちらは「**危険側に嘘をつく**」ため深刻度が高い。別途 issue 化すること。
+
+## 参考: 当時の未了記述（履歴として残す）
 
 **素の `git checkout main` のブロックは残っている。工程9b は依然として実行できない。**
 

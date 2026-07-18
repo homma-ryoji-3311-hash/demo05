@@ -46,11 +46,7 @@
   テストが緑でも完了ではありません。停止して、なぜ触らずに緑になったかを報告してください。
 - commit / push / DB マイグレーションはしないこと。緑になったら停止して報告してください。
 - 不明点はコードを推測で埋めず、リーダーに質問として出してください。
-<!-- リーダー記入（固有注意1〜2行・確定前は空欄のまま）:
-  例: 案件キーの解決は (user_id, project_key)。他ユーザーの同名キーと混同しない。
-      不正 incident status は 422 で、案件作成・紐づけ・incident 保存のいずれも残さない（原子性）。
-      オラクル server.mjs の p_seed / confirm 拡張と HTTP 等価に（レスポンスキー・status 値）。
--->
+案件キーの解決は (user_id, project_key)。他ユーザーの同名キーと混同しない（deny-by-default）。不正な incident status（発生/対応中/解決 以外）は 422 で、案件作成・紐づけ・incident 保存のいずれも残さない（原子性）。オラクル server.mjs（p_seed / confirm 拡張）と HTTP 等価に：レスポンスキー（projects/incidents）・status 値・既存キーは同一 project id を再利用（重複作成しない）。summary の既存挙動（フォールバック・確定後不変・二重確定 409）は壊さない。
 ```
 
 ## 5. 完了の定義（4つとも機械判定・変えない）
@@ -67,7 +63,4 @@
 - 受け入れテスト・`reference-mock/`・`docs/` の変更
 - **確定(slice-03)の既存挙動（summary フォールバック・確定後不変・二重確定409）を壊すこと**
 - reports 本体の他機能・auth 本体・skillsheets・templates への着手
-<!-- リーダー記入（着手してはいけない隣接スライス・確定前は空欄のまま）:
-  候補: slice-12 reconcile-master（本スライスの突合の後段・依存 slice-11）には着手しない。
-        MASTER_SUMMARIES / 増分マージは slice-12 の仕事。
--->
+- **slice-12 reconcile-master（突合の後段・依存 slice-11）に着手しない。** MASTER_SUMMARIES / 増分マージ / 再要約は slice-12 の仕事。本スライスは「案件キーで紐づけ、INCIDENTS 状態を保存する」までで止める（突合＝状態の上書きマージは行わない）。

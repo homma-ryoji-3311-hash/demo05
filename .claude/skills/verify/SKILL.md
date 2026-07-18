@@ -14,6 +14,9 @@ disable-model-invocation: true
 - `harness_start` で **backend と frontend の両方**を起動する（1 app_dir = 1 プロセス。`ui.spec.ts` は両方が上がっていないと緑にならない）。ready を待つ。
 - 接続先は `ACCEPTANCE_BASE_URL`（API・backend :3000）と `ACCEPTANCE_UI_BASE_URL`（画面・frontend :3001）の**2本**（ADR-0018）。
 - 受け入れテストを実行する。**生出力を貼る。** 「passed」の要約行だけでなく、失敗数を含むサマリを提示する。
+- **json レポータも付けて実行する**（Stop ゲートが現スライスの spec に帰属判定するため）。acceptance ディレクトリから:
+  `PLAYWRIGHT_JSON_OUTPUT_NAME=test-results/results.json npx playwright test <specs> --reporter=list,json`。
+  これで `acceptance/test-results/results.json` が残り、全スイート実行で未実装スライスの赤が混ざっても現スライスが緑ならゲートが通る。
 - `*.api.spec.ts` と `*.ui.spec.ts` の**両方**が緑であること。片方でも失敗 → ✗。
 
 ### frontend 停止の反転確認（ADR-0018・決定5）

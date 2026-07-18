@@ -179,6 +179,29 @@ seedTemplate({
   created_at: '2026-07-15T09:00:00Z',
 });
 
+// slice-11: 案件マスター（突合キー）・報告紐づけ・インシデント状態。合成のみ（後段 slice-12 突合の土台）。
+const projects = new Map(); // id -> { id, user_id, project_key, client_name, status }
+let projSeq = 0;
+const nextProjectId = () => `p_${String(++projSeq).padStart(4, '0')}`;
+const INCIDENT_STATUSES = ['発生', '対応中', '解決'];
+// slice-11 検証用 seed: staff01 の既存案件（AC-1「既存案件へ紐づけ」の対象）。下流 backend は同一 seed を持つこと。
+projects.set('p_seed', {
+  id: 'p_seed',
+  user_id: 'staff01',
+  project_key: 'PJ-SEED-001',
+  client_name: '得意先シード',
+  status: '発生',
+});
+// 同一ユーザー内で案件キー既存なら既存 PROJECT、未知なら新規作成（AC-3・重複作成しない）。
+const resolveProject = (userId, projectKey, clientName) => {
+  for (const p of projects.values()) {
+    if (p.user_id === userId && p.project_key === projectKey) return p;
+  }
+  const p = { id: nextProjectId(), user_id: userId, project_key: projectKey, client_name: clientName ?? null, status: '発生' };
+  projects.set(p.id, p);
+  return p;
+};
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -367,8 +390,29 @@ const server = createServer(async (req, res) => {
     if (rep.status === 'confirmed') return json(res, 409, { error: 'already_confirmed' }); // AC-3
     const body = await readBody(req);
     if (body === null) return json(res, 422, { error: 'validation_failed' });
+    // slice-11: 対応案件の紐づけ＋インシデント状態。バリデーション（不正 status は 422）を mutate より先に行う（AC-4・原子性）。
+    const inputProjects = Array.isArray(body.projects) ? body.projects : [];
+    for (const p of inputProjects) {
+      for (const inc of p.incidents ?? []) {
+        if (!INCIDENT_STATUSES.includes(inc.status)) {
+          return json(res, 422, { error: 'validation_failed', field: 'incident.status' }); // 未 mutate＝部分適用なし
+        }
+      }
+    }
+    // 検証通過後に mutate。案件キーで既存/新規を解決し（AC-1/AC-3）、インシデントを案件へ紐づける（AC-2）。
+    const linkedProjects = [];
+    const linkedIncidents = [];
+    for (const p of inputProjects) {
+      const proj = resolveProject(uid, p.project_key, p.client_name);
+      const incs = p.incidents ?? [];
+      for (const inc of incs) linkedIncidents.push({ project_id: proj.id, status: inc.status });
+      if (incs.length) proj.status = incs[incs.length - 1].status; // PROJECT.status = 最新インシデント status
+      linkedProjects.push({ id: proj.id, project_key: proj.project_key, client_name: proj.client_name, status: proj.status });
+    }
     rep.confirmed_summary = body.summary ?? rep.ai_summary_json ?? summarize(rep.raw_text);
     rep.status = 'confirmed';
+    rep.projects = linkedProjects;
+    rep.incidents = linkedIncidents;
     return json(res, 200, rep);
   }
 

@@ -7,6 +7,7 @@ import type { ListReportsUseCase } from '../../../use-case/listReports.js';
 import type { LoadOwnedReportUseCase } from '../../../use-case/loadOwnedReport.js';
 import type { GetPreviousReportUseCase } from '../../../use-case/getPreviousReport.js';
 import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
+import type { LinkedProject, LinkedIncident } from '../../../domain/interface/projectLinker.js';
 
 /** 前回参照のレスポンス形（slice-05）。前回が無ければ previous:null。 */
 export interface PreviousResponse {
@@ -113,9 +114,19 @@ export class ReportController {
    * （status=confirmed・confirmed_summary を受け入れテストが読む）。
    * 二重確定は use-case の ReportConfirmedError を error-handler が 409 に変換する。
    */
-  async confirm(userId: string, id: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
+  async confirm(
+    userId: string,
+    id: string,
+    body: unknown,
+  ): Promise<{ status: number; body: ReportResponse & { projects: LinkedProject[]; incidents: LinkedIncident[] } }> {
     const b = (body ?? {}) as Record<string, unknown>;
-    const report = await this.confirmReport.execute({ userId, id, summary: b.summary });
-    return { status: 200, body: toResponse(report) };
+    // slice-11: body.projects を確定へ渡す。レスポンスに紐づいた projects/incidents を含める。
+    const { report, projects, incidents } = await this.confirmReport.execute({
+      userId,
+      id,
+      summary: b.summary,
+      projects: b.projects,
+    });
+    return { status: 200, body: { ...toResponse(report), projects, incidents } };
   }
 }

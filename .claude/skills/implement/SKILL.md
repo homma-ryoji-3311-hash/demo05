@@ -30,6 +30,8 @@ disable-model-invocation: true
    - `teamdev-test-runner` の `harness_start` で **backend と frontend の両方**を起動し（**1 app_dir = 1 プロセス**なので2回呼ぶ）、**ready を待つ**。`ui.spec.ts` は両方が上がっていないと緑にならない（ADR-0018）。
    - 接続先は `ACCEPTANCE_BASE_URL`（backend :3000）と `ACCEPTANCE_UI_BASE_URL`（frontend :3001）の2本。
    - テストFW（`@playwright/test` 等）で受け入れテスト（`*.api.spec.ts` ＋ `*.ui.spec.ts`）を実行し、**失敗している状態を先に確認**する。
+   - **json レポータも付けて実行する**（Stop ゲートが現スライスの spec に帰属判定するため）。acceptance から:
+     `PLAYWRIGHT_JSON_OUTPUT_NAME=test-results/results.json npx playwright test <specs> --reporter=list,json`。
    - runner は起動係。**採点はテストFW。** runner の出力を合否と読み違えない。
 3. **規律は `/tdd`。** red → green → refactor。ユニットテストは自分で書いてよい（`acceptance/` は不可）。
 4. **詰まったら `/diagnose`。** 推測でコードを変えない。

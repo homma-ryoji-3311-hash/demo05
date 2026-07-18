@@ -1,6 +1,6 @@
 ---
 slice: slice-12-reconcile-master
-approved: false
+approved: true
 ---
 
 # slice-12 reconcile-master — 突合・増分マージによるマスター元データ更新

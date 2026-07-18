@@ -35,6 +35,14 @@ import type { ReportSummaryReaderInterface } from './home/domain/interface/repor
 import { GetHomeUseCase } from './home/use-case/getHome.js';
 import { HomeController } from './home/interfaceAdapter/api/controller/homeController.js';
 import { createHomeRouter } from './home/interfaceAdapter/api/route/homeRoute.js';
+import type { SkillSheetRepositoryInterface } from './skillsheets/domain/interface/skillSheetRepository.js';
+import type { MasterReaderInterface } from './skillsheets/domain/interface/masterReader.js';
+import type { SheetParaphraserInterface } from './skillsheets/domain/interface/sheetParaphraser.js';
+import { GenerateSkillSheetUseCase } from './skillsheets/use-case/generateSkillSheet.js';
+import { SkillSheetController } from './skillsheets/interfaceAdapter/api/controller/skillSheetController.js';
+import { createSkillSheetRouter } from './skillsheets/interfaceAdapter/api/route/skillSheetRoute.js';
+import { InMemorySkillSheetRepository } from './skillsheets/infra/repository/inMemorySkillSheetRepository.js';
+import { FakeSheetParaphraser } from './skillsheets/infra/paraphraser/fakeSheetParaphraser.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -44,6 +52,12 @@ export interface AppDependencies {
   userRepository?: UserRepositoryInterface;
   /** 省略時は決定的フェイク。実プロバイダ実装はここに注入して差し替える（提供元非依存・slice-02 AC-2）。 */
   summarizer?: SummarizerInterface;
+  /** 省略時は空のインメモリ実装（生成物の保存・履歴／slice-08）。 */
+  skillSheetRepository?: SkillSheetRepositoryInterface;
+  /** 省略時は seed 済み合成マスターのインメモリ read ポート（slice-08・オラクル parity）。 */
+  masterReader?: MasterReaderInterface;
+  /** 省略時は決定的フェイク。実プロバイダ実装はここに注入して差し替える（提供元非依存・slice-08 AC-2）。 */
+  sheetParaphraser?: SheetParaphraserInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -57,6 +71,9 @@ export function createApp(deps: AppDependencies): express.Express {
   const reportRepository = deps.reportRepository ?? defaultReportRepository();
   const userRepository = deps.userRepository ?? defaultUserRepository();
   const summarizer = deps.summarizer ?? new FakeSummarizer();
+  const skillSheetRepository = deps.skillSheetRepository ?? new InMemorySkillSheetRepository();
+  const masterReader = deps.masterReader ?? defaultMasterReader();
+  const sheetParaphraser = deps.sheetParaphraser ?? new FakeSheetParaphraser();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -88,6 +105,9 @@ export function createApp(deps: AppDependencies): express.Express {
     },
   };
   const homeController = new HomeController(new GetHomeUseCase(reportSummaryReader));
+  const skillSheetController = new SkillSheetController(
+    new GenerateSkillSheetUseCase(masterReader, sheetParaphraser, skillSheetRepository, generateId, clock),
+  );
 
   const app = express();
   app.use(requestContext());
@@ -106,6 +126,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/reports', createReportRouter({ reportController }));
   // 保護: home ハンドラが authUserId で 401 を担保（slice-07）。集約は read ポート経由でのみ reports を読む。
   app.use('/home', createHomeRouter({ homeController }));
+  // skill-sheets は route の authUserId が 401 を担保（slice-08 AC-5）。所有権 403 は use-case。
+  app.use('/skill-sheets', createSkillSheetRouter({ skillSheetController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
   app.use(errorHandler);
   return app;
@@ -123,4 +145,28 @@ function defaultUserRepository(): UserRepositoryInterface {
   const repo = new InMemoryUserRepository();
   seedUsers(repo);
   return repo;
+}
+
+/**
+ * masterReader 未注入時の既定（seed 済み合成マスターのインメモリ read ポート・slice-08）。
+ * 合成マスターの内容はオラクル(tools/reference-mock-server/server.mjs:57 masters)と同一（parity）。
+ * 数値を含めない＝マスターに無い数値を創作しない検証源（AC-2）。実データとの突合は後続（slice-11/12）。
+ * home の reportSummaryReader と同じく、合成ルートで組む read ポート（専用 infra ファイルは持たない）。
+ */
+function defaultMasterReader(): MasterReaderInterface {
+  const masters = new Map<
+    string,
+    { staffName: string; summaryJson: { achievements: string[]; skills: string[]; issues: string[] } }
+  >([
+    [
+      'staff01',
+      {
+        staffName: 'テスト太郎',
+        summaryJson: { achievements: ['ダッシュボードの改修を担当'], skills: ['フロントエンド'], issues: [] },
+      },
+    ],
+  ]);
+  return {
+    findByStaffId: async (staffId) => masters.get(staffId) ?? null,
+  };
 }

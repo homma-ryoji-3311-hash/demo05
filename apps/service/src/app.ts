@@ -30,6 +30,10 @@ import { AuthController } from './auth/interfaceAdapter/api/controller/authContr
 import { createAuthRouter, createMeRouter } from './auth/interfaceAdapter/api/route/authRoute.js';
 import { InMemoryUserRepository, seedUsers } from './auth/infra/repository/inMemoryUserRepository.js';
 import { requireAuth } from './common/interfaceAdapter/api/auth.js';
+import type { ReportSummaryReaderInterface } from './home/domain/interface/reportSummaryReader.js';
+import { GetHomeUseCase } from './home/use-case/getHome.js';
+import { HomeController } from './home/interfaceAdapter/api/controller/homeController.js';
+import { createHomeRouter } from './home/interfaceAdapter/api/route/homeRoute.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -69,6 +73,19 @@ export function createApp(deps: AppDependencies): express.Express {
     new AuthGoogleCallbackUseCase(userRepository),
     new GetMeUseCase(userRepository),
   );
+  // home の read 専用ポート。reports 本体には触れず、reportRepository を薄くラップして
+  // 状態判定に必要な最小ビュー（id・status）だけを読む（依存は read 経由でのみ隔離・slice-07 §3）。
+  const reportSummaryReader: ReportSummaryReaderInterface = {
+    findDraftByUser: async (userId) => {
+      const draft = await reportRepository.findDraftByUser(userId);
+      return draft ? { id: draft.id, status: draft.status } : null;
+    },
+    findAllByUser: async (userId) => {
+      const reports = await reportRepository.findAllByUser(userId);
+      return reports.map((r) => ({ id: r.id, status: r.status }));
+    },
+  };
+  const homeController = new HomeController(new GetHomeUseCase(reportSummaryReader));
 
   const app = express();
   app.use(requestContext());
@@ -85,6 +102,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/me', requireAuth, createMeRouter({ authController }));
   // reports は各ハンドラが authUserId で 401 を担保（slice-04）。所有権 403 は use-case（AC-4）。
   app.use('/reports', createReportRouter({ reportController }));
+  // 保護: home ハンドラが authUserId で 401 を担保（slice-07）。集約は read ポート経由でのみ reports を読む。
+  app.use('/home', createHomeRouter({ homeController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
   app.use(errorHandler);
   return app;

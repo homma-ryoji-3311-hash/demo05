@@ -30,6 +30,17 @@ export default defineConfig({
           }
         },
       },
+      // S2 ホーム集約 API（/home・slice-07）。SPA のルート /home（page.goto）と衝突するため、
+      // ページ遷移（HTML 要求）は index.html にフォールバックし、fetch=JSON だけを backend へ転送する。
+      '/home': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        bypass(req) {
+          if (req.method === 'GET' && req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
     },
   },
 });

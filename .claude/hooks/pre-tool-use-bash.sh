@@ -9,6 +9,28 @@ CMD="$(json_field "$PAYLOAD" "d.get('tool_input',{}).get('command')")"
 
 deny() { block "PreToolUse:Bash" "$1"; }
 
+# #30: 複合コマンド（; && || | & 改行 連結）で、後段コマンドのトークンを前段ガードに
+# 誤帰属しないため、キーワード以降を「次のコマンド区切りまで」に切り出す。
+# 例: `rm -f x; git checkout main` の -f を checkout に、`git push; gh pr ... --base main`
+#     の main を push 先に、それぞれ誤認してブロックしていた（誤爆・fail-closed の暴発）。
+seg_after() {
+  local s="${CMD#*$1}"
+  s="${s%%;*}"
+  s="${s%%&*}"
+  s="${s%%|*}"
+  s="${s%%$'\n'*}"
+  printf '%s' "$s"
+}
+
+# checkout/switch の破壊フラグ（-f/--force/--discard-changes）を「その checkout コマンド
+# 自身の引数」に限定して判定する（別コマンドの -f を誤帰属しない・#30）。
+checkout_force() {
+  [[ "$CMD" =~ git[[:space:]]+(checkout|switch)([[:space:]]|$) ]] || return 1
+  local seg
+  if [[ "$CMD" =~ git[[:space:]]+checkout ]]; then seg="$(seg_after checkout)"; else seg="$(seg_after switch)"; fi
+  [[ "$seg" =~ (^|[[:space:]])(--force|-f|--discard-changes)([[:space:]]|$) ]]
+}
+
 # --- main を進める操作の禁止（CLAUDE.md §1-1） ---
 # 作業ブランチ（feature/slice-NN / spec/slice-NN、NN=/board 採番）での commit / push は許可されている。
 # 許可を狭く定義するホワイトリスト方式（誤検知は止まる側に倒す＝fail-closed）。
@@ -31,7 +53,9 @@ main を進める操作は統合役ただ1人。/pickup で作業ブランチを
 fi
 
 if [[ "$CMD" =~ (^|[[:space:];&|])git[[:space:]]+push ]]; then
-  PUSH_ARGS="${CMD#*push}"
+  # #30: push 引数は「push を含むコマンドの、次の区切りまで」に限定する（後段の --base main 等を
+  # push 先と誤認しないため）。main/force/refspec の判定は従来どおりこの限定された引数に対して行う。
+  PUSH_ARGS="$(seg_after push)"
   if [[ "$COMMITTABLE" -ne 1 ]]; then
     deny "BLOCKED: git push（現在ブランチ: ${BRANCH}）。
 push が許可されるのは作業ブランチ（feature/slice-NN / spec/slice-NN、NN=/board 採番）からのみ（CLAUDE.md §1-1）。"
@@ -71,10 +95,7 @@ if [[ "$CMD" =~ git[[:space:]]+reset[[:space:]]+--hard ]] \
 || [[ "$CMD" =~ git[[:space:]]+clean[[:space:]]+-[a-zA-Z]*f ]] \
 || [[ "$CMD" =~ git[[:space:]]+branch[[:space:]]+-D ]] \
 || [[ "$CMD" =~ git[[:space:]]+checkout[[:space:]]+(--[[:space:]])?\. ]] \
-|| { [[ "$CMD" =~ git[[:space:]]+(checkout|switch)([[:space:]]|$) ]] \
-     && { [[ "$CMD" =~ (^|[[:space:]])--force([[:space:]]|$) ]] \
-       || [[ "$CMD" =~ (^|[[:space:]])-f([[:space:]]|$) ]] \
-       || [[ "$CMD" =~ (^|[[:space:]])--discard-changes([[:space:]]|$) ]]; }; }; then
+|| checkout_force; then
   deny "BLOCKED: 破壊的な git 操作。作業結果を消す前に人に相談すること。
 やり直したい場合はセッションを捨てて /pickup から再開する（CLAUDE.md §4）。"
 fi

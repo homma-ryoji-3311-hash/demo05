@@ -87,14 +87,16 @@ describe('ConfirmReportUseCase', () => {
 });
 
 describe('ReportEntity.confirm — 確定要約の形', () => {
-  it('summary が無ければ ReportValidationError（→422）で、報告は draft のまま', async () => {
-    const repo = await repoWithDraft();
-    await expect(
-      new ConfirmReportUseCase(repo).execute({ userId: 'staff01', id: 'r1', summary: undefined }),
-    ).rejects.toBeInstanceOf(ReportValidationError);
+  // #45: summary 省略時は AI 要約（ai_summary_json）にフォールバックして確定する（answer key 準拠）。
+  // 要約済みでない状態での 422 は confirmFallback.test.ts が担保する。
+  it('summary 省略時は ai_summary_json にフォールバックして確定する（#45・oracle 準拠）', async () => {
+    const repo = await repoWithDraft(); // ai_summary_json 済みの下書き
+    const report = await new ConfirmReportUseCase(repo).execute({ userId: 'staff01', id: 'r1', summary: undefined });
+    expect(report.status).toBe('confirmed');
 
     const saved = await repo.findById('r1');
-    expect(saved?.status).toBe('draft'); // 検証に落ちた確定は保存しない
+    expect(saved?.status).toBe('confirmed');
+    expect(saved?.toPersistence().confirmedSummary).toEqual(saved?.aiSummaryJson); // AI 要約で確定した
   });
 
   it('カテゴリが配列でなければ ReportValidationError（→422）', async () => {

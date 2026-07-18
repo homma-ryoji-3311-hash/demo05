@@ -39,9 +39,15 @@ import type { SkillSheetRepositoryInterface } from './skillsheets/domain/interfa
 import type { MasterReaderInterface } from './skillsheets/domain/interface/masterReader.js';
 import type { SheetParaphraserInterface } from './skillsheets/domain/interface/sheetParaphraser.js';
 import { GenerateSkillSheetUseCase } from './skillsheets/use-case/generateSkillSheet.js';
+import { ListSkillSheetsUseCase } from './skillsheets/use-case/listSkillSheets.js';
+import { GetSkillSheetForDownloadUseCase } from './skillsheets/use-case/getSkillSheetForDownload.js';
+import { GetSkillSheetPreviewUseCase } from './skillsheets/use-case/getSkillSheetPreview.js';
 import { SkillSheetController } from './skillsheets/interfaceAdapter/api/controller/skillSheetController.js';
 import { createSkillSheetRouter } from './skillsheets/interfaceAdapter/api/route/skillSheetRoute.js';
-import { InMemorySkillSheetRepository } from './skillsheets/infra/repository/inMemorySkillSheetRepository.js';
+import {
+  InMemorySkillSheetRepository,
+  seedSkillSheets,
+} from './skillsheets/infra/repository/inMemorySkillSheetRepository.js';
 import { FakeSheetParaphraser } from './skillsheets/infra/paraphraser/fakeSheetParaphraser.js';
 
 export interface AppDependencies {
@@ -71,7 +77,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const reportRepository = deps.reportRepository ?? defaultReportRepository();
   const userRepository = deps.userRepository ?? defaultUserRepository();
   const summarizer = deps.summarizer ?? new FakeSummarizer();
-  const skillSheetRepository = deps.skillSheetRepository ?? new InMemorySkillSheetRepository();
+  const skillSheetRepository = deps.skillSheetRepository ?? defaultSkillSheetRepository();
   const masterReader = deps.masterReader ?? defaultMasterReader();
   const sheetParaphraser = deps.sheetParaphraser ?? new FakeSheetParaphraser();
   const generateId = deps.generateId ?? (() => randomUUID());
@@ -107,6 +113,9 @@ export function createApp(deps: AppDependencies): express.Express {
   const homeController = new HomeController(new GetHomeUseCase(reportSummaryReader));
   const skillSheetController = new SkillSheetController(
     new GenerateSkillSheetUseCase(masterReader, sheetParaphraser, skillSheetRepository, generateId, clock),
+    new ListSkillSheetsUseCase(skillSheetRepository),
+    new GetSkillSheetForDownloadUseCase(skillSheetRepository),
+    new GetSkillSheetPreviewUseCase(skillSheetRepository),
   );
 
   const app = express();
@@ -144,6 +153,17 @@ function defaultReportRepository(): ReportRepositoryInterface {
 function defaultUserRepository(): UserRepositoryInterface {
   const repo = new InMemoryUserRepository();
   seedUsers(repo);
+  return repo;
+}
+
+/**
+ * skillSheetRepository 未注入時の既定（seed 済みインメモリ・slice-09）。
+ * seed（sk_seed_v1/v2・sk_other）はオラクル(server.mjs:75-99)と同一＝閲覧・履歴・DL・プレビューの観測源。
+ * slice-08（生成）は空 Map で足りたが、slice-09（閲覧）は既存の生成済みシートを前提にするため seed する。
+ */
+function defaultSkillSheetRepository(): SkillSheetRepositoryInterface {
+  const repo = new InMemorySkillSheetRepository();
+  seedSkillSheets(repo);
   return repo;
 }
 

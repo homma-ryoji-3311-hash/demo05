@@ -41,6 +41,18 @@ export default defineConfig({
           }
         },
       },
+      // S6 スキルシート閲覧 API（/skill-sheets・slice-09）。SPA のルート /skill-sheets（page.goto）と
+      // 衝突するため、ページ遷移（HTML 要求）は index.html にフォールバックし、fetch（JSON/HTML プレビュー）
+      // だけを backend へ転送する（/reports・/home と同型）。
+      '/skill-sheets': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        bypass(req) {
+          if (req.method === 'GET' && req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
     },
   },
 });

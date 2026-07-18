@@ -1,0 +1,32 @@
+import type { User } from '../../domain/model/user.js';
+import type { UserRepositoryInterface } from '../../domain/interface/userRepository.js';
+
+/**
+ * インメモリ実装（テストダブル）。UserRepositoryInterface を満たす本物の実装で、
+ * DB なしで認証フローを検証できる（受け入れテストの緑検証・PERSISTENCE=memory）。
+ * 本番実装（Prisma）は後続で注入する（マイグレーションの実行は統合役・CLAUDE.md §1-2）。
+ */
+export class InMemoryUserRepository implements UserRepositoryInterface {
+  private readonly records = new Map<string, User>();
+
+  async findById(id: string): Promise<User | null> {
+    return this.records.get(id) ?? null;
+  }
+
+  async upsert(user: User): Promise<User> {
+    const existing = this.records.get(user.id);
+    if (existing) return existing; // 既存は上書きしない（オラクルと同義）
+    this.records.set(user.id, user);
+    return user;
+  }
+}
+
+/**
+ * dev/受け入れ用のシード（合成データのみ）。オラクル(tools/reference-mock-server/server.mjs)と同一。
+ * - staff01: 既定の fixture user（受け入れテストが X-User-Id で使う／/me の対象）。
+ * - staff02: r_other の所有者（他人 → 403 の検証相手）。
+ */
+export function seedUsers(repo: InMemoryUserRepository): void {
+  void repo.upsert({ id: 'staff01', email: 'staff01@example.test', name: 'テスト太郎', role: 'staff' });
+  void repo.upsert({ id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' });
+}

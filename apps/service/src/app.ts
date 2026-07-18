@@ -23,11 +23,20 @@ import { ReportController } from './reports/interfaceAdapter/api/controller/repo
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
 import { FakeSummarizer } from './reports/infra/summarizer/fakeSummarizer.js';
+import type { UserRepositoryInterface } from './auth/domain/interface/userRepository.js';
+import { AuthGoogleCallbackUseCase } from './auth/use-case/authGoogleCallback.js';
+import { GetMeUseCase } from './auth/use-case/getMe.js';
+import { AuthController } from './auth/interfaceAdapter/api/controller/authController.js';
+import { createAuthRouter, createMeRouter } from './auth/interfaceAdapter/api/route/authRoute.js';
+import { InMemoryUserRepository, seedUsers } from './auth/infra/repository/inMemoryUserRepository.js';
+import { requireAuth } from './common/interfaceAdapter/api/auth.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
   /** 省略時は seed 済みのインメモリ実装を使う（既存テストの createApp 呼び出しを不変に保つため）。 */
   reportRepository?: ReportRepositoryInterface;
+  /** 省略時は seed 済み（staff01/staff02）のインメモリ実装を使う（slice-06 認証・認可）。 */
+  userRepository?: UserRepositoryInterface;
   /** 省略時は決定的フェイク。実プロバイダ実装はここに注入して差し替える（提供元非依存・slice-02 AC-2）。 */
   summarizer?: SummarizerInterface;
   generateId?: () => string;
@@ -41,6 +50,7 @@ export interface AppDependencies {
 export function createApp(deps: AppDependencies): express.Express {
   const { greetingRepository } = deps;
   const reportRepository = deps.reportRepository ?? defaultReportRepository();
+  const userRepository = deps.userRepository ?? defaultUserRepository();
   const summarizer = deps.summarizer ?? new FakeSummarizer();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
@@ -55,6 +65,10 @@ export function createApp(deps: AppDependencies): express.Express {
     new ListReportsUseCase(reportRepository),
     new LoadOwnedReportUseCase(reportRepository),
   );
+  const authController = new AuthController(
+    new AuthGoogleCallbackUseCase(userRepository),
+    new GetMeUseCase(userRepository),
+  );
 
   const app = express();
   app.use(requestContext());
@@ -65,6 +79,11 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/api', createHealthRouter());
   app.use('/api/hello', createGreetingRouter({ greetingController }));
   // 受け入れテスト（acceptance）は root を叩く（案A・answer key と HTTP 等価）。overview §3 に合わせ root へ。
+  // 公開: OAuth コールバック（許可外ドメインは use-case が 403）。認証ミドルウェアを通さない。
+  app.use('/auth', createAuthRouter({ authController }));
+  // 保護: 未認証は requireAuth が 401（AC-3）。
+  app.use('/me', requireAuth, createMeRouter({ authController }));
+  // reports は各ハンドラが authUserId で 401 を担保（slice-04）。所有権 403 は use-case（AC-4）。
   app.use('/reports', createReportRouter({ reportController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
   app.use(errorHandler);
@@ -75,5 +94,12 @@ export function createApp(deps: AppDependencies): express.Express {
 function defaultReportRepository(): ReportRepositoryInterface {
   const repo = new InMemoryReportRepository();
   seedReports(repo);
+  return repo;
+}
+
+/** userRepository 未注入時の既定（seed 済み: staff01/staff02 のインメモリ）。 */
+function defaultUserRepository(): UserRepositoryInterface {
+  const repo = new InMemoryUserRepository();
+  seedUsers(repo);
   return repo;
 }

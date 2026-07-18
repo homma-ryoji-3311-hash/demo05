@@ -18,6 +18,18 @@ export class ReportConfirmedError extends Error implements DomainError {
   }
 }
 
+/**
+ * 所有者でないユーザーによる報告へのアクセス（deny-by-default）。kind=forbidden → 403。
+ * 内容は一切返さない（slice-04 AC-3）。存在しない報告は 404 のまま＝所有者にだけ「無い」ことを伝える。
+ */
+export class ReportForbiddenError extends Error implements DomainError {
+  readonly kind = 'forbidden' as const;
+  constructor(id: string) {
+    super(`report ${id} is not accessible by this user`);
+    this.name = 'ReportForbiddenError';
+  }
+}
+
 /** 対象の報告が存在しない。kind=not_found → 404。 */
 export class ReportNotFoundError extends Error implements DomainError {
   readonly kind = 'not_found' as const;

@@ -1,11 +1,10 @@
 // slice-03 report-confirm — UI 層（正本: docs/spec/slice-03.md「画面要件」, approved）
-// ADR-0018: frontend 未実装のため（reference-mock に対しては）赤が正常。page.goto で S4 を叩く（静的検知4b）。
 //
-// #19 の工程4 翻訳欠陥修正（2026-07-18）:
-//   - test2 は要約せずに「確定」を押しており、AC-1 の Given（要約済み）を落として空要約の確定を実装に強制していた
-//     （誤クリック1回で空要約が回復不能に確定）。→ 本文入力→自動保存→要約（結果が出る）→確定 の順にする。
-//   - test2 は共有 seed r_seed_draft（staff01 の唯一の下書き）を confirmed に消費し、create.ui/summarize.ui と競合していた。
-//     → 専用ユーザーへ storageState を上書きし、その人自身の下書きを確定する（共有 seed を汚さない・previous.ui と同型）。
+// #19 の強化＋工程6 実機修正（2026-07-18）:
+//   - test2 は要約せず「確定」を押し、AC-1 の Given（要約済み）を落として空要約の確定を実装に強制していた。
+//     → 要約してから確定する。review は「保存済み本文」を要約するので、本文は autosave が効く入力ページで打つ。
+//     同期は waitForResponse でなく DOM の「下書きを保存しました」表示待ち（レース無し）。
+//   - test2 は共有 seed r_seed_draft を confirmed に消費し他スイートと競合していた → 専用ユーザーで自分の下書きを確定する。
 import { test, expect } from '@playwright/test';
 
 const UI_BASE = process.env.ACCEPTANCE_UI_BASE_URL ?? 'http://localhost:5173';
@@ -26,20 +25,17 @@ test.describe('slice-03 report-confirm [ui] — S4 AI要約 確認・編集', ()
       },
     });
     test('要約してから確定すると編集不可の確定表示へ切り替わる', async ({ page }) => {
+      // review は既存下書きを要求する。専用ユーザーの下書きを入力ページ（autosave）で作る＝共有 seed を汚さない。
+      await page.goto('/reports/new');
+      await expect(page.getByText('自動保存が有効です')).toBeVisible(); // mount 完了（onChange 前の fill レースを避ける）
+      await page.getByRole('textbox').first().fill('確定用の本文。テスト対応を実施した。');
+      await expect(page.getByText('下書きを保存しました')).toBeVisible();
+      // AC-1 の Given（要約済み）を満たす: 保存済み本文を要約してから確定（空要約の確定を強制しない）。
       await page.goto('/reports/new/review');
-      // AC-1 の Given（要約済み）を満たす: 本文入力→自動保存→要約。空要約の確定を強制しない。
-      const body = page.getByRole('textbox').first();
-      await body.fill('ダッシュボードの改修を対応した。');
-      const saved = page.waitForResponse(
-        (r) => /\/reports\/[^/]+$/.test(new URL(r.url()).pathname) && r.request().method() === 'PATCH',
-      );
-      await body.blur();
-      await saved;
-      await page.getByRole('button', { name: /要約/ }).click();
-      // 要約結果（本文由来の実内容）が出たのを待ってから確定する。
-      await expect(page.getByText('ダッシュボードの改修を対応した')).toBeVisible();
+      await page.getByRole('button', { name: '要約する' }).click();
+      await expect(page.locator('#summary-achievements')).toBeVisible(); // 要約済み（結果フォームが出た）
 
-      await page.getByRole('button', { name: /確定/ }).click();
+      await page.getByRole('button', { name: '確定' }).click();
       await expect(page.getByText(/確定済み/)).toBeVisible();
     });
   });

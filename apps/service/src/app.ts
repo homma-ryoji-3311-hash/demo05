@@ -57,6 +57,10 @@ import { ListTemplatesUseCase } from './templates/use-case/listTemplates.js';
 import { TemplateController } from './templates/interfaceAdapter/api/controller/templateController.js';
 import { createTemplateRouter } from './templates/interfaceAdapter/api/route/templateRoute.js';
 import { InMemoryTemplateRepository, seedTemplates } from './templates/infra/repository/inMemoryTemplateRepository.js';
+import type { ProjectRepositoryInterface } from './projects/domain/interface/projectRepository.js';
+import type { ProjectLinkerInterface } from './reports/domain/interface/projectLinker.js';
+import { LinkReportProjectsUseCase } from './projects/use-case/linkReportProjects.js';
+import { InMemoryProjectRepository, seedProjects } from './projects/infra/repository/inMemoryProjectRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -74,6 +78,8 @@ export interface AppDependencies {
   sheetParaphraser?: SheetParaphraserInterface;
   /** 省略時は seed 済み（grp_synth_eng の2版）のインメモリ実装（slice-10・オラクル parity）。 */
   templateRepository?: TemplateRepositoryInterface;
+  /** 省略時は seed 済み（p_seed）のインメモリ実装（slice-11・案件紐づけ）。 */
+  projectRepository?: ProjectRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -91,8 +97,16 @@ export function createApp(deps: AppDependencies): express.Express {
   const masterReader = deps.masterReader ?? defaultMasterReader();
   const sheetParaphraser = deps.sheetParaphraser ?? new FakeSheetParaphraser();
   const templateRepository = deps.templateRepository ?? defaultTemplateRepository();
+  const projectRepository = deps.projectRepository ?? defaultProjectRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
+
+  // 確定時の案件紐づけポート（slice-11）。フィーチャー間 import を避け、projects の use-case を
+  // reports のポートに適合させて注入する（home の reportSummaryReader と同型・合成ルートのみが跨げる）。
+  const linkReportProjects = new LinkReportProjectsUseCase(projectRepository, generateId);
+  const projectLinker: ProjectLinkerInterface = {
+    link: (input) => linkReportProjects.execute(input),
+  };
 
   const greetingController = new GreetingController(new GetGreetingUseCase(greetingRepository, generateId, clock));
   const reportController = new ReportController(
@@ -100,7 +114,7 @@ export function createApp(deps: AppDependencies): express.Express {
     new UpdateDraftUseCase(reportRepository),
     new GetDraftUseCase(reportRepository),
     new SummarizeReportUseCase(reportRepository, summarizer),
-    new ConfirmReportUseCase(reportRepository),
+    new ConfirmReportUseCase(reportRepository, projectLinker),
     new ListReportsUseCase(reportRepository),
     new LoadOwnedReportUseCase(reportRepository),
     new GetPreviousReportUseCase(reportRepository),
@@ -179,6 +193,16 @@ function defaultReportRepository(): ReportRepositoryInterface {
 function defaultUserRepository(): UserRepositoryInterface {
   const repo = new InMemoryUserRepository();
   seedUsers(repo);
+  return repo;
+}
+
+/**
+ * projectRepository 未注入時の既定（seed 済みインメモリ・slice-11）。
+ * seed `p_seed`（staff01 の既存案件）はオラクル(server.mjs)と同一＝AC-1「既存案件へ紐づけ」の観測源。
+ */
+function defaultProjectRepository(): ProjectRepositoryInterface {
+  const repo = new InMemoryProjectRepository();
+  seedProjects(repo);
   return repo;
 }
 

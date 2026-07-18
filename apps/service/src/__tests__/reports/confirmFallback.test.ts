@@ -18,7 +18,7 @@ async function repoWithSummarizedDraft(): Promise<InMemoryReportRepository> {
 describe('ConfirmReportUseCase summary フォールバック (#45 / slice-03 fix-forward)', () => {
   it('summary 省略時は ai_summary_json で確定する（oracle と HTTP 等価）', async () => {
     const repo = await repoWithSummarizedDraft();
-    const report = await new ConfirmReportUseCase(repo).execute({ userId: 'u', id: 'r1', summary: undefined });
+    const { report } = await new ConfirmReportUseCase(repo).execute({ userId: 'u', id: 'r1', summary: undefined });
     expect(report.status).toBe('confirmed');
     expect(report.toPersistence().confirmedSummary).toEqual(AI_SUMMARY);
   });
@@ -26,7 +26,7 @@ describe('ConfirmReportUseCase summary フォールバック (#45 / slice-03 fix
   it('summary を渡せば従来どおりその編集値で確定する（既存挙動は不変）', async () => {
     const repo = await repoWithSummarizedDraft();
     const edited: StructuredSummary = { incidents: ['a'], achievements: [], issues: [], skills: [] };
-    const report = await new ConfirmReportUseCase(repo).execute({ userId: 'u', id: 'r1', summary: edited });
+    const { report } = await new ConfirmReportUseCase(repo).execute({ userId: 'u', id: 'r1', summary: edited });
     expect(report.toPersistence().confirmedSummary).toEqual(edited);
   });
 

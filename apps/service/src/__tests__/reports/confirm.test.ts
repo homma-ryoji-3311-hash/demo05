@@ -35,7 +35,7 @@ async function repoWithDraft(): Promise<InMemoryReportRepository> {
 describe('ConfirmReportUseCase', () => {
   it('編集後の要約を確定値として保存し、draft → confirmed に遷移する（AC-1）', async () => {
     const repo = await repoWithDraft();
-    const report = await new ConfirmReportUseCase(repo).execute({ userId: 'staff01', id: 'r1', summary: EDITED });
+    const { report } = await new ConfirmReportUseCase(repo).execute({ userId: 'staff01', id: 'r1', summary: EDITED });
 
     expect(report.status).toBe('confirmed');
     const saved = await repo.findById('r1');
@@ -91,7 +91,11 @@ describe('ReportEntity.confirm — 確定要約の形', () => {
   // 要約済みでない状態での 422 は confirmFallback.test.ts が担保する。
   it('summary 省略時は ai_summary_json にフォールバックして確定する（#45・oracle 準拠）', async () => {
     const repo = await repoWithDraft(); // ai_summary_json 済みの下書き
-    const report = await new ConfirmReportUseCase(repo).execute({ userId: 'staff01', id: 'r1', summary: undefined });
+    const { report } = await new ConfirmReportUseCase(repo).execute({
+      userId: 'staff01',
+      id: 'r1',
+      summary: undefined,
+    });
     expect(report.status).toBe('confirmed');
 
     const saved = await repo.findById('r1');

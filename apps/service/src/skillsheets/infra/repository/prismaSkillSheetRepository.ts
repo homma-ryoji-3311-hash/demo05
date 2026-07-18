@@ -22,4 +22,9 @@ export class PrismaSkillSheetRepository implements SkillSheetRepositoryInterface
     void this.prisma;
     throw new SkillSheetPersistenceUnavailableError('findById');
   }
+
+  async findByUser(_staffId: string): Promise<SkillSheetEntity[]> {
+    void this.prisma;
+    throw new SkillSheetPersistenceUnavailableError('findByUser');
+  }
 }

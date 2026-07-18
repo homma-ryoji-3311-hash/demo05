@@ -58,11 +58,11 @@ describe('slice-10 excel-template-manage use-cases', () => {
     expect(activated.isActive).toBe(true);
 
     const list = await new ListTemplatesUseCase(repo, ctx).execute({ userId: 'mgr01' });
-    const byId = Object.fromEntries(list.map((t) => [t.id, t]));
-    expect(byId[a.id].isActive).toBe(true);
-    expect(byId[b.id]).toBeTruthy(); // 旧版 b は削除されず残る
-    expect(byId[b.id].isActive).toBe(false);
-    expect(byId['tpl_seed_v2'].isActive).toBe(false); // 旧有効版も切替で外れる（履歴として残る）
+    const byId = new Map(list.map((t) => [t.id, t]));
+    expect(byId.get(a.id)?.isActive).toBe(true);
+    expect(byId.has(b.id)).toBe(true); // 旧版 b は削除されず残る
+    expect(byId.get(b.id)?.isActive).toBe(false);
+    expect(byId.get('tpl_seed_v2')?.isActive).toBe(false); // 旧有効版も切替で外れる（履歴として残る）
   });
 
   it('AC-4: staff のアップロードは 403（forbidden）', async () => {

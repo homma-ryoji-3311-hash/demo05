@@ -1,27 +1,49 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { GreetingPage } from './features/greeting';
 import { ReportDetailPage, ReportInputPage, ReportListPage, ReportReviewPage } from './features/reports';
+import { LoginPage, RequireAuth } from './features/auth';
 
 // 静的パス（/reports/new）は動的パス（/reports/:id）より優先される（react-router のランク付け）。
+// 保護ルート（reports 配下）は RequireAuth で包む。未ログインは /login へ誘導（slice-06 UI-AC）。
 export const router = createBrowserRouter([
   {
     path: '/',
     element: <GreetingPage />,
   },
   {
+    path: '/login',
+    element: <LoginPage />,
+  },
+  {
     path: '/reports',
-    element: <ReportListPage />,
+    element: (
+      <RequireAuth>
+        <ReportListPage />
+      </RequireAuth>
+    ),
   },
   {
     path: '/reports/new',
-    element: <ReportInputPage />,
+    element: (
+      <RequireAuth>
+        <ReportInputPage />
+      </RequireAuth>
+    ),
   },
   {
     path: '/reports/new/review',
-    element: <ReportReviewPage />,
+    element: (
+      <RequireAuth>
+        <ReportReviewPage />
+      </RequireAuth>
+    ),
   },
   {
     path: '/reports/:id',
-    element: <ReportDetailPage />,
+    element: (
+      <RequireAuth>
+        <ReportDetailPage />
+      </RequireAuth>
+    ),
   },
 ]);

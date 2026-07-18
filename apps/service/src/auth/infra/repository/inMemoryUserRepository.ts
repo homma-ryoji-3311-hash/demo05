@@ -25,8 +25,17 @@ export class InMemoryUserRepository implements UserRepositoryInterface {
  * dev/受け入れ用のシード（合成データのみ）。オラクル(tools/reference-mock-server/server.mjs)と同一。
  * - staff01: 既定の fixture user（受け入れテストが X-User-Id で使う／/me の対象）。
  * - staff02: r_other の所有者（他人 → 403 の検証相手）。
+ * - mgr01:  テンプレート管理（slice-10）の manager。auth 本体ロジックは不変・seed のみ追加（指示書 §3）。
  */
 export function seedUsers(repo: InMemoryUserRepository): void {
   void repo.upsert({ id: 'staff01', email: 'staff01@example.test', name: 'テスト太郎', role: 'staff' });
   void repo.upsert({ id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' });
+  // slice-10: テンプレート管理は manager 権限。オラクル server.mjs:29 と同一 seed（role=manager・group_id）。
+  void repo.upsert({
+    id: 'mgr01',
+    email: 'mgr01@example.test',
+    name: '管理花子',
+    role: 'manager',
+    group_id: 'grp_synth_eng',
+  });
 }

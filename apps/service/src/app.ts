@@ -49,6 +49,14 @@ import {
   seedSkillSheets,
 } from './skillsheets/infra/repository/inMemorySkillSheetRepository.js';
 import { FakeSheetParaphraser } from './skillsheets/infra/paraphraser/fakeSheetParaphraser.js';
+import type { TemplateRepositoryInterface } from './templates/domain/interface/templateRepository.js';
+import type { UserContextReaderInterface } from './templates/domain/interface/userContextReader.js';
+import { UploadTemplateUseCase } from './templates/use-case/uploadTemplate.js';
+import { ActivateTemplateUseCase } from './templates/use-case/activateTemplate.js';
+import { ListTemplatesUseCase } from './templates/use-case/listTemplates.js';
+import { TemplateController } from './templates/interfaceAdapter/api/controller/templateController.js';
+import { createTemplateRouter } from './templates/interfaceAdapter/api/route/templateRoute.js';
+import { InMemoryTemplateRepository, seedTemplates } from './templates/infra/repository/inMemoryTemplateRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -64,6 +72,8 @@ export interface AppDependencies {
   masterReader?: MasterReaderInterface;
   /** 省略時は決定的フェイク。実プロバイダ実装はここに注入して差し替える（提供元非依存・slice-08 AC-2）。 */
   sheetParaphraser?: SheetParaphraserInterface;
+  /** 省略時は seed 済み（grp_synth_eng の2版）のインメモリ実装（slice-10・オラクル parity）。 */
+  templateRepository?: TemplateRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -80,6 +90,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const skillSheetRepository = deps.skillSheetRepository ?? defaultSkillSheetRepository();
   const masterReader = deps.masterReader ?? defaultMasterReader();
   const sheetParaphraser = deps.sheetParaphraser ?? new FakeSheetParaphraser();
+  const templateRepository = deps.templateRepository ?? defaultTemplateRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -117,6 +128,19 @@ export function createApp(deps: AppDependencies): express.Express {
     new GetSkillSheetForDownloadUseCase(skillSheetRepository),
     new GetSkillSheetPreviewUseCase(skillSheetRepository),
   );
+  // templates の認可 read ポート（slice-10 §3「use-case で user.role を read」）。auth 本体には触れず、
+  // userRepository を薄くラップして role・group_id だけを読む（home の reportSummaryReader と同型）。
+  const userContextReader: UserContextReaderInterface = {
+    findByUser: async (userId) => {
+      const u = await userRepository.findById(userId);
+      return u ? { role: u.role, groupId: u.group_id ?? null } : null;
+    },
+  };
+  const templateController = new TemplateController(
+    new UploadTemplateUseCase(templateRepository, userContextReader, generateId, clock),
+    new ActivateTemplateUseCase(templateRepository, userContextReader),
+    new ListTemplatesUseCase(templateRepository, userContextReader),
+  );
 
   const app = express();
   app.use(requestContext());
@@ -137,6 +161,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/home', createHomeRouter({ homeController }));
   // skill-sheets は route の authUserId が 401 を担保（slice-08 AC-5）。所有権 403 は use-case。
   app.use('/skill-sheets', createSkillSheetRouter({ skillSheetController }));
+  // templates は route の authUserId が 401 を担保（slice-10 AC-4）。manager 認可 403 は use-case（id 参照より先）。
+  app.use('/templates', createTemplateRouter({ templateController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
   app.use(errorHandler);
   return app;
@@ -153,6 +179,16 @@ function defaultReportRepository(): ReportRepositoryInterface {
 function defaultUserRepository(): UserRepositoryInterface {
   const repo = new InMemoryUserRepository();
   seedUsers(repo);
+  return repo;
+}
+
+/**
+ * templateRepository 未注入時の既定（seed 済みインメモリ・slice-10）。
+ * seed（grp_synth_eng の tpl_seed_v1/v2）はオラクル(server.mjs:161-180)と同一＝版一覧・履歴・有効版切替の観測源。
+ */
+function defaultTemplateRepository(): TemplateRepositoryInterface {
+  const repo = new InMemoryTemplateRepository();
+  seedTemplates(repo);
   return repo;
 }
 

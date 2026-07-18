@@ -116,9 +116,14 @@ export class ReportEntity {
    * 編集後の要約を確定値として保存し、draft → confirmed に遷移する（slice-03 AC-1）。
    * 確定済みかどうかの判定は use-case が行う（二重確定・確定後の本文更新は 409）。
    * ai_summary_json は AI が出した原文として残す＝人が編集した確定値と対比できる。
+   *
+   * #45: summary を省略した確定は AI 要約（ai_summary_json）にフォールバックする。
+   * answer key（reference-mock server.mjs:183 `body.summary ?? rep.ai_summary_json`）と HTTP 等価にする。
+   * 要約済みでない（フォールバック先も無い）まま summary 省略なら、確定できる要約が無いので 422。
    */
   confirm(summary: unknown): void {
-    this._confirmedSummary = toStructuredSummary(summary);
+    const source = summary ?? this._aiSummaryJson;
+    this._confirmedSummary = toStructuredSummary(source);
     this._status = 'confirmed';
   }
 

@@ -25,6 +25,8 @@ const reports = new Map();
 const users = new Map([
   ['staff01', { id: 'staff01', email: 'staff01@example.test', name: 'テスト太郎', role: 'staff' }],
   ['staff02', { id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' }],
+  // slice-10: テンプレート管理は manager 権限。合成グループの管理者（下流 backend は同一 seed を持つこと）。
+  ['mgr01', { id: 'mgr01', email: 'mgr01@example.test', name: '管理花子', role: 'manager', group_id: 'grp_synth_eng' }],
 ]);
 let seq = 0;
 const nextId = () => `r_${String(++seq).padStart(4, '0')}`;
@@ -145,6 +147,38 @@ const paraphraseSkillsheet = (m) => ({
 const yyyymmdd = (d) =>
   `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 
+// slice-10: Excel テンプレート（版・履歴・有効版・アンカー検証）。テンプレート管理は manager 権限。
+const templates = new Map();
+let tmplSeq = 0;
+const nextTmplId = () => `tpl_${String(++tmplSeq).padStart(4, '0')}`;
+const isManager = (uid) => users.get(uid)?.role === 'manager';
+// 差し込み位置アンカーの必須キー（欠落は 422・AC-2）。
+const REQUIRED_ANCHORS = ['name', 'project_block'];
+const validateAnchors = (anchorMap) =>
+  REQUIRED_ANCHORS.filter((a) => !anchorMap || typeof anchorMap[a] !== 'string' || anchorMap[a].length === 0);
+// slice-10 検証用 seed: grp_synth_eng の2版（履歴・有効版切替の観測源）。下流 backend は同一 seed を持つこと。
+const seedTemplate = (t) => templates.set(t.id, t);
+seedTemplate({
+  id: 'tpl_seed_v1',
+  group_id: 'grp_synth_eng',
+  version: 'v1',
+  anchor_map: { name: 'B2', project_block: 'A10:F14' },
+  file_url: 'https://synthetic-storage.test/templates/tpl_seed_v1?sig=synthetic',
+  is_active: false,
+  uploaded_by: 'mgr01',
+  created_at: '2026-07-10T09:00:00Z',
+});
+seedTemplate({
+  id: 'tpl_seed_v2',
+  group_id: 'grp_synth_eng',
+  version: 'v2',
+  anchor_map: { name: 'B2', project_block: 'A10:F14' },
+  file_url: 'https://synthetic-storage.test/templates/tpl_seed_v2?sig=synthetic',
+  is_active: true, // 現在の有効版
+  uploaded_by: 'mgr01',
+  created_at: '2026-07-15T09:00:00Z',
+});
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -228,6 +262,50 @@ const server = createServer(async (req, res) => {
     if (s.staff_id !== uid) return json(res, 403, { error: 'forbidden' });
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(renderPreviewHtml(s));
+  }
+
+  // slice-10 AC-1/AC-2/AC-4: POST /templates（アップロード＋アンカー検証）。manager のみ・欠落アンカーは 422。
+  if (hit('POST', /^\/templates$/)) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' }); // テンプレート管理は manager（staff→403）
+    const body = await readBody(req);
+    const anchor_map = (body && body.anchor_map) || {};
+    const missing = validateAnchors(anchor_map);
+    if (missing.length) return json(res, 422, { error: 'validation_failed', field: 'anchor_map', missing }); // 欠落は有効版に登録しない
+    const id = nextTmplId();
+    const group_id = users.get(uid).group_id;
+    const version = `v${[...templates.values()].filter((t) => t.group_id === group_id).length + 1}`;
+    const tmpl = {
+      id,
+      group_id,
+      version,
+      anchor_map,
+      file_url: `https://synthetic-storage.test/templates/${id}?sig=synthetic`,
+      is_active: false,
+      uploaded_by: uid,
+      created_at: new Date().toISOString(),
+    };
+    templates.set(id, tmpl);
+    return json(res, 201, tmpl);
+  }
+
+  // slice-10 AC-3/AC-4: PUT /templates/:id/activate（有効版切替・旧版は履歴として残す）。manager のみ・無し 404。
+  if ((m = hit('PUT', /^\/templates\/([^/]+)\/activate$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const t = templates.get(m[1]);
+    if (!t) return json(res, 404, { error: 'not_found' });
+    for (const other of templates.values()) if (other.group_id === t.group_id) other.is_active = false; // 同一グループ内で有効版を排他に
+    t.is_active = true; // 旧版は削除せず is_active=false で残る（履歴）
+    return json(res, 200, t);
+  }
+
+  // slice-10 AC-3/UI: GET /templates（自グループの版一覧・履歴・有効版フラグ）。manager のみ。
+  if (hit('GET', /^\/templates$/)) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const group_id = users.get(uid).group_id;
+    const list = [...templates.values()]
+      .filter((t) => t.group_id === group_id)
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
+    return json(res, 200, { templates: list });
   }
 
   // slice-01 AC-1/AC-4: POST /reports

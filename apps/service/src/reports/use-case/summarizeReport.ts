@@ -1,7 +1,7 @@
 import type { StructuredSummary } from '../domain/model/report.js';
 import type { ReportRepositoryInterface } from '../domain/interface/reportRepository.js';
 import type { SummarizerInterface } from '../domain/interface/summarizer.js';
-import { ReportNotFoundError, SummarizerFailedError } from '../domain/error/reportErrors.js';
+import { ReportForbiddenError, ReportNotFoundError, SummarizerFailedError } from '../domain/error/reportErrors.js';
 
 /**
  * 要約ユースケース（slice-02 AC-1〜AC-4）。
@@ -18,6 +18,7 @@ export class SummarizeReportUseCase {
   async execute(input: { userId: string; id: string }): Promise<StructuredSummary> {
     const report = await this.repo.findById(input.id);
     if (!report) throw new ReportNotFoundError(input.id);
+    if (report.userId !== input.userId) throw new ReportForbiddenError(input.id); // 他人の報告は要約させない（403・AC-4 と同じ認可境界）
 
     let summary: StructuredSummary;
     try {

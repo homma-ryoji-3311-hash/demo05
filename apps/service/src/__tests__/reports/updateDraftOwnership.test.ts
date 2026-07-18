@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { UpdateDraftUseCase } from '../../reports/use-case/updateDraft.js';
+import { SummarizeReportUseCase } from '../../reports/use-case/summarizeReport.js';
+import { ConfirmReportUseCase } from '../../reports/use-case/confirmReport.js';
 import { InMemoryReportRepository } from '../../reports/infra/repository/inMemoryReportRepository.js';
-import { ReportEntity } from '../../reports/domain/model/report.js';
+import { ReportEntity, type StructuredSummary } from '../../reports/domain/model/report.js';
+import type { SummarizerInterface } from '../../reports/domain/interface/summarizer.js';
 import { ReportForbiddenError, ReportNotFoundError } from '../../reports/domain/error/reportErrors.js';
+
+/** 呼ばれたら記録するだけのフェイク要約器（所有権で弾かれれば呼ばれないことを検証する）。 */
+const EMPTY_SUMMARY: StructuredSummary = { incidents: [], achievements: [], issues: [], skills: [] };
+class SpySummarizer implements SummarizerInterface {
+  called = false;
+  async summarize(): Promise<StructuredSummary> {
+    this.called = true;
+    return EMPTY_SUMMARY;
+  }
+}
 
 /** staff02 が所有する確定済み報告を 1 件持つリポジトリ（他人 → 403 の検証相手）。 */
 async function repoWithOthersReport(): Promise<InMemoryReportRepository> {
@@ -54,5 +67,27 @@ describe('UpdateDraftUseCase ownership (slice-06 AC-4 PATCH)', () => {
     );
     const updated = await new UpdateDraftUseCase(repo).execute({ userId: 'staff01', id: 'r_mine', rawText: '更新後' });
     expect(updated.rawText).toBe('更新後');
+  });
+});
+
+describe('書き込み経路すべてで所有権を強制する（Audit C-7 の穴を塞ぐ）', () => {
+  it('他人の報告の要約は 403（要約器を呼ばない＝ai_summary も上書きしない）', async () => {
+    const repo = await repoWithOthersReport();
+    const summarizer = new SpySummarizer();
+    await expect(
+      new SummarizeReportUseCase(repo, summarizer).execute({ userId: 'staff01', id: 'r_other' }),
+    ).rejects.toBeInstanceOf(ReportForbiddenError);
+    expect(summarizer.called).toBe(false); // 所有権判定は要約器呼び出しより前
+  });
+
+  it('他人の報告の確定は 403（confirmed_summary を上書きしない）', async () => {
+    const repo = await repoWithOthersReport();
+    await expect(
+      new ConfirmReportUseCase(repo).execute({
+        userId: 'staff01',
+        id: 'r_other',
+        summary: EMPTY_SUMMARY,
+      }),
+    ).rejects.toBeInstanceOf(ReportForbiddenError);
   });
 });

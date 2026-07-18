@@ -32,6 +32,14 @@ export class InMemoryReportRepository implements ReportRepositoryInterface {
       .sort((a, b) => b.reportDate.localeCompare(a.reportDate))
       .map((r) => ReportEntity.reconstruct(r));
   }
+
+  /** 直近の確定報告（対象を除く・同一ユーザー・reportDate 最新1件）。前回参照（slice-05）。 */
+  async findPreviousConfirmed(userId: string, excludeId: string): Promise<ReportEntity | null> {
+    const prev = [...this.records.values()]
+      .filter((r) => r.userId === userId && r.status === 'confirmed' && r.id !== excludeId)
+      .sort((a, b) => b.reportDate.localeCompare(a.reportDate))[0];
+    return prev ? ReportEntity.reconstruct(prev) : null;
+  }
 }
 
 /**

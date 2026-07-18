@@ -57,6 +57,14 @@ export function createReportRouter(deps: { reportController: ReportController })
       .catch(next);
   });
 
+  // GET /reports/:id/previous は前回参照（slice-05）。/:id より前・具体パス優先。
+  router.get('/:id/previous', (req, res, next) => {
+    void reportController
+      .previous(authUserId(req), req.params.id)
+      .then((r) => res.status(r.status).json(r.body))
+      .catch(next);
+  });
+
   router.get('/:id', (req, res, next) => {
     void reportController
       .get(authUserId(req), req.params.id)

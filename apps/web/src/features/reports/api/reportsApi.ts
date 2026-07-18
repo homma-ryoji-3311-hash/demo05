@@ -53,6 +53,17 @@ export interface SummaryDto {
   skills: string[];
 }
 
+/**
+ * 対象報告の直近の確定報告（前回参照・slice-05）を取得する。無ければ null。
+ * backend の `GET /reports/:id/previous` を叩く（読み取り専用）。API 消費者向け。
+ */
+export async function fetchPrevious(id: string): Promise<{ raw_text: string; summary: SummaryDto | null } | null> {
+  const res = await apiFetch<{ previous: { raw_text: string; summary: SummaryDto | null } | null }>(
+    `/reports/${id}/previous`,
+  );
+  return res.previous;
+}
+
 /** 下書きを要約する（slice-02）。失敗（502 等）は apiFetch が例外にする＝画面は失敗状態を出す。 */
 export async function summarizeReport(id: string): Promise<SummaryDto> {
   return apiFetch<SummaryDto>(`/reports/${id}/summarize`, { method: 'POST' });

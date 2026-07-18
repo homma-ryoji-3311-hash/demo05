@@ -19,6 +19,7 @@ import { SummarizeReportUseCase } from './reports/use-case/summarizeReport.js';
 import { ConfirmReportUseCase } from './reports/use-case/confirmReport.js';
 import { ListReportsUseCase } from './reports/use-case/listReports.js';
 import { LoadOwnedReportUseCase } from './reports/use-case/loadOwnedReport.js';
+import { GetPreviousReportUseCase } from './reports/use-case/getPreviousReport.js';
 import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
@@ -68,6 +69,7 @@ export function createApp(deps: AppDependencies): express.Express {
     new ConfirmReportUseCase(reportRepository),
     new ListReportsUseCase(reportRepository),
     new LoadOwnedReportUseCase(reportRepository),
+    new GetPreviousReportUseCase(reportRepository),
   );
   const authController = new AuthController(
     new AuthGoogleCallbackUseCase(userRepository),

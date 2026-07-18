@@ -5,7 +5,13 @@ import type { SummarizeReportUseCase } from '../../../use-case/summarizeReport.j
 import type { ConfirmReportUseCase } from '../../../use-case/confirmReport.js';
 import type { ListReportsUseCase } from '../../../use-case/listReports.js';
 import type { LoadOwnedReportUseCase } from '../../../use-case/loadOwnedReport.js';
+import type { GetPreviousReportUseCase } from '../../../use-case/getPreviousReport.js';
 import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
+
+/** 前回参照のレスポンス形（slice-05）。前回が無ければ previous:null。 */
+export interface PreviousResponse {
+  previous: { raw_text: string; summary: StructuredSummary | null } | null;
+}
 
 export interface ReportResponse {
   id: string;
@@ -44,6 +50,7 @@ export class ReportController {
     private readonly confirmReport: ConfirmReportUseCase,
     private readonly listReports: ListReportsUseCase,
     private readonly loadOwnedReport: LoadOwnedReportUseCase,
+    private readonly getPreviousReport: GetPreviousReportUseCase,
   ) {}
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
@@ -77,6 +84,18 @@ export class ReportController {
   async list(userId: string): Promise<{ status: number; body: { reports: ReportResponse[] } }> {
     const reports = await this.listReports.execute({ userId });
     return { status: 200, body: { reports: reports.map(toResponse) } };
+  }
+
+  /**
+   * 前回参照（slice-05）。対象報告の直近の確定報告を読み取り専用で返す。
+   * 前回が無ければ 200＋previous:null（404 にしない）。404/403 は use-case が投げ error-handler が変換。
+   */
+  async previous(userId: string, id: string): Promise<{ status: number; body: PreviousResponse }> {
+    const prev = await this.getPreviousReport.execute({ userId, id });
+    return {
+      status: 200,
+      body: { previous: prev ? { raw_text: prev.rawText, summary: prev.summary } : null },
+    };
   }
 
   /**

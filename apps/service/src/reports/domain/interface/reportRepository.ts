@@ -12,4 +12,9 @@ export interface ReportRepositoryInterface {
   findDraftByUser(userId: string): Promise<ReportEntity | null>;
   /** ユーザーの報告を日付の新しい順に返す（slice-04 AC-1）。所有者の絞り込みは実装側で行う。 */
   findAllByUser(userId: string): Promise<ReportEntity[]>;
+  /**
+   * 直近の確定報告（前回参照・slice-05）。同一ユーザー・status=confirmed・`excludeId` を除く中で
+   * reportDate が最新の1件を返す。無ければ null。読み取り専用（何も書き換えない）。
+   */
+  findPreviousConfirmed(userId: string, excludeId: string): Promise<ReportEntity | null>;
 }

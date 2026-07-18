@@ -3,13 +3,15 @@
  * reports の ReportEntity（クラス）と異なり、user は不変の素データなので type ベースで表す
  * （Explore の地図・指示書 §3「type ベースの設計」）。
  */
-export type UserRole = 'staff' | 'admin';
+export type UserRole = 'staff' | 'admin' | 'manager';
 
 export interface User {
   id: string;
   email: string;
   name: string;
   role: UserRole;
+  /** 所属グループ（slice-10: テンプレート管理の版グループ）。staff は未設定でよい。 */
+  group_id?: string;
 }
 
 /**

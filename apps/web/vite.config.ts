@@ -53,6 +53,17 @@ export default defineConfig({
           }
         },
       },
+      // S7 テンプレート管理 API（/templates・slice-10）。SPA のルート /templates（page.goto）と衝突するため、
+      // ページ遷移（HTML 要求）は index.html にフォールバックし、fetch（JSON）だけを backend へ転送する。
+      '/templates': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        bypass(req) {
+          if (req.method === 'GET' && req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
     },
   },
 });

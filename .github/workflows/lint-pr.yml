@@ -28,4 +28,4 @@ jobs:
         env:
           # 環境変数経由で渡してシェルインジェクションを防ぐ
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: echo "$PR_TITLE" | pnpm exec commitlint --config commitlint.pr.config.ts
+        run: echo "$PR_TITLE" | pnpm exec commitlint

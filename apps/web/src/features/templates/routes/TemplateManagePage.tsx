@@ -81,7 +81,10 @@ export function TemplateManagePage() {
       </p>
 
       {state === 'ready' && templates.length > 0 && (
-        <ul aria-label="テンプレート版一覧" className="divide-y rounded border">
+        // aria-label は list テスト /版|履歴/ を満たしつつ、フォームテストの
+        // getByLabel(/テンプレート|アップロード|ファイル/) に二重マッチしない語にする
+        // （regression-of-slice-10: 「テンプレート」を含むと file 入力ラベルと衝突し strict mode 違反）。
+        <ul aria-label="版の一覧（履歴）" className="divide-y rounded border">
           {templates.map((tmpl) => (
             <li key={tmpl.id} className="flex items-center gap-4 p-3">
               <span>{tmpl.version}</span>

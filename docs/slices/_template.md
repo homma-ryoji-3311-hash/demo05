@@ -40,8 +40,14 @@
 - `apps/service/src/<feature>/` （`*.router.ts` / `*.service.ts` / `*.repository.ts` / `*.schema.ts`）
 - `apps/web/app/<path>/**`
 - 上記範囲の unit テスト
+- **合成ルート・配線ファイルは常に触ってよい（範囲判定の対象外・ADR-0018 運用細則）**：
+  `apps/service/src/app.ts`・`apps/service/src/main.ts`・`apps/web/src/router.tsx`・vite/client 設定。
+  横断強制（認可・共通エラーハンドラ等）を担うスライスは、**その正本ファイルも §3 に明示的に含める**こと
+  （§6 の「正本は本スライス」と §3 の齟齬を作らない。全スライスで再発 →
+  `docs/memory-bank/pending-slice-scope-composition-root-2026-07-16.md` 昇格）。
 
 **範囲外**：`acceptance/` `reference-mock/` `docs/` `.claude/` 認証 / 要約 / DB マイグレーション
+（ただし当該スライスが正本を担う横断機能は上の固定行に従い §3 へ明示）
 
 ## 4. 貼り付け用の枠（`/implement` が読む）
 

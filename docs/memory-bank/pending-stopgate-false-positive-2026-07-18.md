@@ -27,6 +27,21 @@ slice-06 セッションで、実テストが緑（auth.api 5/5・auth.ui 2/2・
 - **より堅牢な有効化**: json レポータを `acceptance/playwright.config.ts` の `reporter` に常設すれば skill の実行規律に依存せず results.json が必ず残る。ただし `acceptance/` は **spec/* からしか書けない**（protect-paths.sh・ADR-0004）ため、この1行追加は **spec/* PR**（PM/AIアーキ）で行う。本 chore PR では skill 指示による interim 有効化に留める。
 - **強制力の階段**: 現在は「宣言（skills 本文）＋ hook 実装」。json レポータ常設で「実行時強制」に1段上がる。飛び級はしない。
 
+## 発生回数の追記（2026-07-18・slice-07/slice-05 セッション）
+
+#41 マージ後の main でも、**残存パターン**が2回再発した（slice-07・slice-05 の /verify）:
+
+- /verify 判定1 の **frontend 停止「反転確認」**（ADR-0018・決定5）は `ui.spec` を**わざと赤**にする。
+  この赤が `acceptance/test-results/.last-run.json` を `failed` に更新する。
+- そのとき反転実行を `--reporter=list`（json なし）で回すと **results.json が更新されず**、
+  stop-gate のスライス帰属スコープが効かずフォールバックで `.last-run.json=failed` を読み **block**。
+- 回避: /verify の最後に**全緑を json レポータ付きで再実行**して `.last-run.json` を `passed` に戻す（毎回手動で実施）。
+
+**含意**: (1) 「残・上流フォローアップ」の **json レポータ config 常設（#44）を早くマージ**すれば、
+反転実行が list-only でも results.json が必ず残り、この残存パターンが消える。
+(2) `/verify` SKILL.md に「**反転確認の直後は全緑を list,json で再実行して締める**」を1行明記する（宣言・AIアーキ確定）。
+2ストライク成立（slice-07・slice-05）。
+
 ## 剪定
 
 CLAUDE.md は 146 行で健全・本件で本体に足す行は無い（すべて hook / skills / config）。

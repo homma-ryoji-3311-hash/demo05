@@ -39,6 +39,12 @@ export class PrismaReportRepository implements ReportRepositoryInterface {
     return r ? this.toEntity(r) : null;
   }
 
+  /** 所有者で絞り、日付の新しい順に返す（slice-04 AC-1）。 */
+  async findAllByUser(userId: string): Promise<ReportEntity[]> {
+    const rows = await this.prisma.report.findMany({ where: { userId }, orderBy: { reportDate: 'desc' } });
+    return rows.map((r) => this.toEntity(r));
+  }
+
   private toEntity(r: {
     id: string;
     userId: string;

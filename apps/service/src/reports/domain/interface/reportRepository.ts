@@ -10,4 +10,6 @@ export interface ReportRepositoryInterface {
   findById(id: string): Promise<ReportEntity | null>;
   /** ユーザーの現在の下書き（status=draft）を返す。無ければ null。S3 の下書き復元に使う。 */
   findDraftByUser(userId: string): Promise<ReportEntity | null>;
+  /** ユーザーの報告を日付の新しい順に返す（slice-04 AC-1）。所有者の絞り込みは実装側で行う。 */
+  findAllByUser(userId: string): Promise<ReportEntity[]>;
 }

@@ -1,9 +1,10 @@
 import type { CreateDraftUseCase } from '../../../use-case/createDraft.js';
 import type { UpdateDraftUseCase } from '../../../use-case/updateDraft.js';
 import type { GetDraftUseCase } from '../../../use-case/getDraft.js';
-import type { GetReportUseCase } from '../../../use-case/getReport.js';
 import type { SummarizeReportUseCase } from '../../../use-case/summarizeReport.js';
 import type { ConfirmReportUseCase } from '../../../use-case/confirmReport.js';
+import type { ListReportsUseCase } from '../../../use-case/listReports.js';
+import type { LoadOwnedReportUseCase } from '../../../use-case/loadOwnedReport.js';
 import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
 
 export interface ReportResponse {
@@ -40,8 +41,9 @@ export class ReportController {
     private readonly updateDraft: UpdateDraftUseCase,
     private readonly getDraft: GetDraftUseCase,
     private readonly summarizeReport: SummarizeReportUseCase,
-    private readonly getReport: GetReportUseCase,
     private readonly confirmReport: ConfirmReportUseCase,
+    private readonly listReports: ListReportsUseCase,
+    private readonly loadOwnedReport: LoadOwnedReportUseCase,
   ) {}
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
@@ -62,10 +64,19 @@ export class ReportController {
     return { status: 200, body: report ? toResponse(report) : { draft: null } };
   }
 
-  /** 報告1件の取得。要約失敗後も draft のまま残っていること（AC-4）の確認に使われる。 */
+  /**
+   * 報告1件の取得（slice-02 の要約失敗確認 ＋ slice-04 AC-2 の詳細）。
+   * 所有者境界は loadOwnedReport が持つ＝他人の報告は 403（AC-3）。
+   */
   async get(userId: string, id: string): Promise<{ status: number; body: ReportResponse }> {
-    const report = await this.getReport.execute({ userId, id });
+    const report = await this.loadOwnedReport.execute({ userId, id });
     return { status: 200, body: toResponse(report) };
+  }
+
+  /** 自分の報告一覧（slice-04 AC-1）。日付の新しい順。他人の報告は含まれない。 */
+  async list(userId: string): Promise<{ status: number; body: { reports: ReportResponse[] } }> {
+    const reports = await this.listReports.execute({ userId });
+    return { status: 200, body: { reports: reports.map(toResponse) } };
   }
 
   /**

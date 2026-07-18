@@ -66,6 +66,45 @@ const sheets = new Map();
 let sheetSeq = 0;
 const nextSheetId = () => `sk_${String(++sheetSeq).padStart(4, '0')}`;
 
+// slice-09 検証用シード（閲覧・履歴・DL・プレビューの対象）。合成データのみ（憲法 §1-6）。
+// backend 実装（slice-09 下流）はこの seed を同一に持つこと（reports の r_seed_* / r_other と同型・parity）。
+const seedSheet = (s) => sheets.set(s.id, s);
+// staff01 の生成済み2版（履歴・生成日時の新しい順の観測源）。
+seedSheet({
+  id: 'sk_seed_v1',
+  staff_id: 'staff01',
+  filename: 'テスト太郎_スキルシート_20260710.xlsx',
+  file_url: 'https://synthetic-storage.test/skill-sheets/sk_seed_v1?sig=synthetic',
+  created_at: '2026-07-10T09:00:00Z',
+  content: { career_summary: ['ダッシュボードの改修を担当（職務経歴）'], skills: ['フロントエンド'], issues: [] },
+});
+seedSheet({
+  id: 'sk_seed_v2',
+  staff_id: 'staff01',
+  filename: 'テスト太郎_スキルシート_20260715.xlsx',
+  file_url: 'https://synthetic-storage.test/skill-sheets/sk_seed_v2?sig=synthetic',
+  created_at: '2026-07-15T09:00:00Z', // v1 より新しい＝一覧の先頭
+  content: { career_summary: ['ダッシュボードの改修を担当（職務経歴）'], skills: ['フロントエンド', 'テスト設計'], issues: [] },
+});
+// staff02（他人）のシート（AC-3 の 403 検証用・reports の r_other と同型）。
+seedSheet({
+  id: 'sk_other',
+  staff_id: 'staff02',
+  filename: 'テスト花子_スキルシート_20260714.xlsx',
+  file_url: 'https://synthetic-storage.test/skill-sheets/sk_other?sig=synthetic',
+  created_at: '2026-07-14T09:00:00Z',
+  content: { career_summary: ['他スタッフの職務経歴'], skills: [], issues: [] },
+});
+
+// slice-09: 生成済みシート content を HTML プレビューへ変換（PM決定=HTML・元 xlsx は渡さない）。
+const renderPreviewHtml = (s) => {
+  const li = (arr) => arr.map((x) => `<li>${x}</li>`).join('');
+  return `<!doctype html><html lang="ja"><meta charset="utf-8"><title>${s.filename}</title>` +
+    `<section><h1>${s.filename}</h1>` +
+    `<h2>職務経歴</h2><ul>${li(s.content.career_summary ?? [])}</ul>` +
+    `<h2>スキル</h2><ul>${li(s.content.skills ?? [])}</ul></section></html>`;
+};
+
 const PORT = Number(process.env.PORT ?? 8000);
 const json = (res, code, body) => {
   res.writeHead(code, { 'content-type': 'application/json' });
@@ -163,6 +202,32 @@ const server = createServer(async (req, res) => {
     const sheet = { id, staff_id: uid, filename, file_url, created_at: now.toISOString(), content };
     sheets.set(id, sheet); // 再生成は新 id・旧は残す（非破壊）
     return json(res, 201, sheet);
+  }
+
+  // slice-09 AC-1/AC-4: GET /skill-sheets（自分の生成済み一覧・生成日時の新しい順・履歴込み）
+  if (hit('GET', /^\/skill-sheets$/)) {
+    const mine = [...sheets.values()]
+      .filter((s) => s.staff_id === uid)
+      // created_at 降順。同時刻は id 降順で後発を先頭に（新しい版が先）。
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
+    return json(res, 200, { sheets: mine });
+  }
+
+  // slice-09 AC-2/AC-3/AC-4: GET /skill-sheets/:id/download（元の xlsx を署名付き URL で渡す）。他人 403・無し 404。
+  if ((m = hit('GET', /^\/skill-sheets\/([^/]+)\/download$/))) {
+    const s = sheets.get(m[1]);
+    if (!s) return json(res, 404, { error: 'not_found' });
+    if (s.staff_id !== uid) return json(res, 403, { error: 'forbidden' }); // 他人のシートは DL 不可（deny-by-default）
+    return json(res, 200, { file_url: s.file_url, filename: s.filename }); // プレビュー変換でなく元の xlsx
+  }
+
+  // slice-09 AC-5/AC-3/AC-4: GET /skill-sheets/:id/preview（HTML プレビュー・PM決定）。他人 403・無し 404。元 xlsx は渡さない。
+  if ((m = hit('GET', /^\/skill-sheets\/([^/]+)\/preview$/))) {
+    const s = sheets.get(m[1]);
+    if (!s) return json(res, 404, { error: 'not_found' });
+    if (s.staff_id !== uid) return json(res, 403, { error: 'forbidden' });
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    return res.end(renderPreviewHtml(s));
   }
 
   // slice-01 AC-1/AC-4: POST /reports

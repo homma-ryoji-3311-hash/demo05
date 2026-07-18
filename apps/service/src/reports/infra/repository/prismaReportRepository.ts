@@ -45,6 +45,15 @@ export class PrismaReportRepository implements ReportRepositoryInterface {
     return rows.map((r) => this.toEntity(r));
   }
 
+  /** 直近の確定報告（対象を除く・同一ユーザー・reportDate 最新1件）。前回参照（slice-05）。 */
+  async findPreviousConfirmed(userId: string, excludeId: string): Promise<ReportEntity | null> {
+    const r = await this.prisma.report.findFirst({
+      where: { userId, status: 'confirmed', id: { not: excludeId } },
+      orderBy: { reportDate: 'desc' },
+    });
+    return r ? this.toEntity(r) : null;
+  }
+
   private toEntity(r: {
     id: string;
     userId: string;

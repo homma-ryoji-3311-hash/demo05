@@ -13,3 +13,4 @@
 | slice-05 | 2026-07-18 |  | 0 | 未計測 | なし（Audit: GO・指摘 0件）。現 main からゼロ実装（旧 PR #22 は superseded）。実装中に slice-02 summarize.ui の並列フレークを診断（単独/直列 26/26 緑・slice-05 回帰でないと確認） | Honma218（Claude Opus 実装） |
 | slice-08 | 2026-07-19 |  | 0 | 未計測 | なし（Audit: GO・指摘 0件）。工程6・方式B ゼロ実装。画面なし → api 6/6 緑・unit 5/5・全68緑。PR #56 | Honma218（Claude Opus 実装） |
 | slice-09 | 2026-07-19 |  | 0 | 未計測 | なし（Audit: GO・Minor 1＝vite.config の §3 配線列挙漏れ・逸脱でない）。工程6・方式B。api 7/7＋ui 3/3 緑（反転確認済）・unit 5/5・全73緑。PR #57 | Honma218（Claude Opus 実装） |
+| slice-10 | 2026-07-19 |  | 0 | 未計測 | なし（Audit: GO・Minor 1＝prisma internal error 経路・未実行で影響なし）。工程6・方式B。Phase 2 完了スライス。api 6/6＋ui 2/2 緑（反転確認済）・unit 5/5・全78緑。user モデルに manager role＋group_id 追加（mgr01 seed の必然）。PR #58 | Honma218（Claude Opus 実装） |

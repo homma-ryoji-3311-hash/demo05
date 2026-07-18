@@ -1,6 +1,6 @@
 ---
 slice: slice-11-project-linking
-approved: false
+approved: true
 ---
 
 # slice-11 project-linking — 確定時の案件キー紐づけと INCIDENTS ステータス

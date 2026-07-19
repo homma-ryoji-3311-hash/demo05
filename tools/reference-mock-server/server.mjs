@@ -27,6 +27,12 @@ const users = new Map([
   ['staff02', { id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' }],
   // slice-10: テンプレート管理は manager 権限。合成グループの管理者（下流 backend は同一 seed を持つこと）。
   ['mgr01', { id: 'mgr01', email: 'mgr01@example.test', name: '管理花子', role: 'manager', group_id: 'grp_synth_eng' }],
+  // slice-17: 承認主体＝super admin（PM 決定 2026-07-15）。承認待ちの新規スタッフは deny-by-default（status=pending）。
+  // テストごとに別 pending ユーザー（並列干渉回避）: ac1=never-approve / ac2・ac3=各自 approve / ac1 は AC-4 の一覧確認にも使う。
+  ['super01', { id: 'super01', email: 'super01@example.test', name: '統括管理', role: 'super_admin' }],
+  ['pend_ac1', { id: 'pend_ac1', email: 'newstaff1@example.test', name: '新人一', role: 'staff', status: 'pending' }],
+  ['pend_ac2', { id: 'pend_ac2', email: 'newstaff2@example.test', name: '新人二', role: 'staff', status: 'pending' }],
+  ['pend_ac3', { id: 'pend_ac3', email: 'newstaff3@example.test', name: '新人三', role: 'staff', status: 'pending' }],
 ]);
 let seq = 0;
 const nextId = () => `r_${String(++seq).padStart(4, '0')}`;
@@ -207,6 +213,12 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-17: 承認待ち／承認・担当紐付け。新規スタッフは deny-by-default（pending）→ 承認で active。承認主体は super admin。
+// 主/副担当の操作差の細部・system/super admin の分離は slice-24 permission-model へ（本スライスは属性の設定までを対象）。
+const ASSIGNMENT_ROLES = ['primary', 'secondary'];
+const isSuperAdmin = (uid) => users.get(uid)?.role === 'super_admin';
+const isPending = (uid) => users.get(uid)?.status === 'pending';
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -230,11 +242,15 @@ const server = createServer(async (req, res) => {
   const uid = authUser(req);
   if (!uid) return json(res, 401, { error: 'unauthenticated' });
 
-  // slice-06: /me
+  // slice-06: /me（slice-17: 承認状態 status も返す。承認待ち画面が自分の状態を知れるよう pending も /me は許可）
   if (hit('GET', /^\/me$/)) {
     const u = users.get(uid) ?? { id: uid, role: 'staff' };
-    return json(res, 200, { id: u.id, role: u.role, name: u.name });
+    return json(res, 200, { id: u.id, role: u.role, name: u.name, status: u.status ?? 'active' });
   }
+
+  // slice-17 AC-1/AC-3: deny-by-default。未承認（pending）は /me 以外の保護 API で 403（報告フローに入れない）。
+  // 承認（AC-2）で status=active になるとこのゲートを通過する（AC-3）。既存ユーザーは status 無し＝active 扱いで不変。
+  if (isPending(uid)) return json(res, 403, { error: 'pending_approval' });
 
   // slice-07: ホーム集約
   if (hit('GET', /^\/home$/)) {
@@ -334,6 +350,30 @@ const server = createServer(async (req, res) => {
       .filter((t) => t.group_id === group_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
     return json(res, 200, { templates: list });
+  }
+
+  // slice-17 AC-4: 承認待ちスタッフ一覧は super admin のみ取得できる（他ロールには見せない）。
+  if (hit('GET', /^\/admin\/staff\/pending$/)) {
+    if (!isSuperAdmin(uid)) return json(res, 403, { error: 'forbidden' });
+    const pending = [...users.values()]
+      .filter((u) => u.status === 'pending')
+      .map((u) => ({ id: u.id, email: u.email, name: u.name }));
+    return json(res, 200, { pending });
+  }
+
+  // slice-17 AC-2: super admin の承認で担当（主/副）・チャネル・報告サイクルを設定し active 化する。
+  if ((m = hit('POST', /^\/admin\/staff\/([^/]+)\/approve$/))) {
+    if (!isSuperAdmin(uid)) return json(res, 403, { error: 'forbidden' }); // 承認は組織横断の権限＝super admin
+    const target = users.get(m[1]);
+    if (!target) return json(res, 404, { error: 'not_found' });
+    const body = await readBody(req);
+    const role = body?.assignment?.role;
+    if (!ASSIGNMENT_ROLES.includes(role)) return json(res, 422, { error: 'validation_failed', field: 'assignment.role' });
+    target.status = 'active'; // deny-by-default 解除（AC-3）
+    target.assignment = { role }; // 主/副の属性設定（操作差の細部は slice-24）
+    target.channel = typeof body.channel === 'string' ? body.channel : null;
+    target.cycle = typeof body.cycle === 'string' ? body.cycle : null;
+    return json(res, 200, { id: target.id, status: target.status, assignment: target.assignment, channel: target.channel, cycle: target.cycle });
   }
 
   // slice-01 AC-1/AC-4: POST /reports

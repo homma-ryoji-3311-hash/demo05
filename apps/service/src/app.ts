@@ -61,6 +61,10 @@ import type { ProjectRepositoryInterface } from './projects/domain/interface/pro
 import type { ProjectLinkerInterface } from './reports/domain/interface/projectLinker.js';
 import { LinkReportProjectsUseCase } from './projects/use-case/linkReportProjects.js';
 import { InMemoryProjectRepository, seedProjects } from './projects/infra/repository/inMemoryProjectRepository.js';
+import type { MasterSummaryRepositoryInterface } from './master-summaries/domain/interface/masterSummaryRepository.js';
+import type { MasterReconcilerInterface } from './reports/domain/interface/masterReconciler.js';
+import { ReconcileMasterUseCase } from './master-summaries/use-case/reconcileMaster.js';
+import { InMemoryMasterSummaryRepository } from './master-summaries/infra/repository/inMemoryMasterSummaryRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -80,6 +84,8 @@ export interface AppDependencies {
   templateRepository?: TemplateRepositoryInterface;
   /** 省略時は seed 済み（p_seed）のインメモリ実装（slice-11・案件紐づけ）。 */
   projectRepository?: ProjectRepositoryInterface;
+  /** 省略時は空のインメモリ実装（slice-12・突合済みマスター）。 */
+  masterSummaryRepository?: MasterSummaryRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -98,6 +104,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const sheetParaphraser = deps.sheetParaphraser ?? new FakeSheetParaphraser();
   const templateRepository = deps.templateRepository ?? defaultTemplateRepository();
   const projectRepository = deps.projectRepository ?? defaultProjectRepository();
+  const masterSummaryRepository = deps.masterSummaryRepository ?? new InMemoryMasterSummaryRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -107,6 +114,11 @@ export function createApp(deps: AppDependencies): express.Express {
   const projectLinker: ProjectLinkerInterface = {
     link: (input) => linkReportProjects.execute(input),
   };
+  // 確定時の突合ポート（slice-12・ADR-0019）。master-summaries の use-case を reports のポートに適合させて注入。
+  const reconcileMaster = new ReconcileMasterUseCase(masterSummaryRepository, clock);
+  const masterReconciler: MasterReconcilerInterface = {
+    reconcile: (input) => reconcileMaster.execute(input),
+  };
 
   const greetingController = new GreetingController(new GetGreetingUseCase(greetingRepository, generateId, clock));
   const reportController = new ReportController(
@@ -114,7 +126,7 @@ export function createApp(deps: AppDependencies): express.Express {
     new UpdateDraftUseCase(reportRepository),
     new GetDraftUseCase(reportRepository),
     new SummarizeReportUseCase(reportRepository, summarizer),
-    new ConfirmReportUseCase(reportRepository, projectLinker),
+    new ConfirmReportUseCase(reportRepository, projectLinker, masterReconciler),
     new ListReportsUseCase(reportRepository),
     new LoadOwnedReportUseCase(reportRepository),
     new GetPreviousReportUseCase(reportRepository),

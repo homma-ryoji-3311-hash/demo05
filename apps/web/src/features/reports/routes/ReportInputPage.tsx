@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { fetchDraft, createDraft, updateDraft, fetchPrevious, fetchReports, type ReportDto, type SummaryDto } from '../api/reportsApi';
+import { VoiceInput } from '../components/VoiceInput';
 
 /** 前回参照の表示データ（前回本文＋前回確定要約）。無ければ null。 */
 type Previous = { raw_text: string; summary: SummaryDto | null } | null;
@@ -69,6 +70,15 @@ export function ReportInputPage() {
     scheduleSave(value);
   };
 
+  // 音声入力の取り込み（slice-18・AC-1）: STT 結果を本文末尾へ追記する（既存本文を消さない）。
+  // キーボード入力と同じ保存経路（自動保存）に載せる。取り込みは明示操作のみ（自動確定しない・AC-2）。
+  const appendVoice = (voiceText: string): void => {
+    const next = text ? `${text}\n${voiceText}` : voiceText;
+    setText(next);
+    setSaved(false);
+    scheduleSave(next);
+  };
+
   return (
     <main className="p-8">
       <h1 className="mb-4 text-2xl font-bold">業務報告入力</h1>
@@ -98,6 +108,8 @@ export function ReportInputPage() {
         className="min-h-40 w-full rounded border p-2"
         placeholder="今日の業務内容を入力してください"
       />
+      {/* 音声入力（slice-18）。本文欄と併用し、STT 結果は取り込み操作で本文末尾へ追記する（自動確定しない）。 */}
+      <VoiceInput onImport={appendVoice} />
       <p role="status" aria-live="polite" className="mt-2 text-sm text-gray-600">
         {saved ? '下書きを保存しました' : '自動保存が有効です'}
       </p>

@@ -102,6 +102,16 @@ export default defineConfig({
           }
         },
       },
+      // S8 グループ設定 API（/groups・slice-22）。SPA ルートに /groups は無いので素の転送でよい（page.goto は /admin/group-settings）。
+      '/groups': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      // 過去報告スナップショット API（/report-snapshots・slice-22）。SPA ルートに無いので素の転送。
+      '/report-snapshots': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 });

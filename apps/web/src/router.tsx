@@ -5,7 +5,7 @@ import { LoginPage, RequireAuth } from './features/auth';
 import { HomePage } from './features/home';
 import { SkillSheetListPage, BulkDownloadPage } from './features/skillsheets';
 import { TemplateManagePage } from './features/templates';
-import { AdminConsolePage } from './features/admin';
+import { AdminConsolePage, GroupSettingsPage } from './features/admin';
 import { NotificationSettingsPage } from './features/notifications';
 import { ApprovalConsolePage, PendingApprovalPage } from './features/staff-approval';
 import { QuestionSetEditorPage } from './features/question-sets';
@@ -62,6 +62,15 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <ApprovalConsolePage />
+      </RequireAuth>
+    ),
+  },
+  {
+    // S8 グループ設定領域（slice-22・担当 manager）。/admin/staff より具体的でない別パス。専用画面ではなく S8 内領域。
+    path: '/admin/group-settings',
+    element: (
+      <RequireAuth>
+        <GroupSettingsPage />
       </RequireAuth>
     ),
   },

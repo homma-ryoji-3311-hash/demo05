@@ -136,6 +136,22 @@ import {
   InMemoryQuestionSetRepository,
   seedQuestionSets,
 } from './question-sets/infra/repository/inMemoryQuestionSetRepository.js';
+import type { GroupSettingRepositoryInterface } from './group-settings/domain/interface/groupSettingRepository.js';
+import type { GroupManagerPolicyInterface } from './group-settings/domain/interface/groupManagerPolicy.js';
+import { GetGroupSettingUseCase } from './group-settings/use-case/getGroupSetting.js';
+import { UpdateGroupSettingUseCase } from './group-settings/use-case/updateGroupSetting.js';
+import { TransferStaffGroupUseCase } from './group-settings/use-case/transferStaffGroup.js';
+import { GetReportSnapshotUseCase } from './group-settings/use-case/getReportSnapshot.js';
+import { GroupSettingController } from './group-settings/interfaceAdapter/api/controller/groupSettingController.js';
+import {
+  createGroupSettingRouter,
+  createReportSnapshotRouter,
+  createStaffTransferRouter,
+} from './group-settings/interfaceAdapter/api/route/groupSettingRoute.js';
+import {
+  InMemoryGroupSettingRepository,
+  seedGroupSettings,
+} from './group-settings/infra/repository/inMemoryGroupSettingRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -173,6 +189,8 @@ export interface AppDependencies {
   questionSetRepository?: QuestionSetRepositoryInterface;
   /** 省略時は seed 済み（bs_1/bs_2/bs_3）のインメモリ台帳（slice-21・一括ダウンロードの対象決定）。 */
   staffRosterReader?: StaffRosterReaderInterface;
+  /** 省略時は seed 済み（grp_a/grp_b・rs_past）のインメモリ実装（slice-22・グループ別設定）。 */
+  groupSettingRepository?: GroupSettingRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -203,6 +221,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const staffAccountRepository = deps.staffAccountRepository ?? defaultStaffAccountRepository();
   const questionSetRepository = deps.questionSetRepository ?? defaultQuestionSetRepository();
   const staffRosterReader = deps.staffRosterReader ?? new InMemoryStaffRosterReader(seedStaffRoster());
+  const groupSettingRepository = deps.groupSettingRepository ?? defaultGroupSettingRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -268,6 +287,22 @@ export function createApp(deps: AppDependencies): express.Express {
     new UpdateQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
     new GetQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
     new PublishQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
+  );
+  // slice-22: グループ設定の編集担当（groupManagers seed）＋一般 manager（auth の role）を解決するポリシー。
+  const groupManagers = new Map<string, string[]>([
+    ['grp_a', ['gs_mgr']],
+    ['grp_b', []],
+    ['grp_c', ['gs_mgr']],
+  ]);
+  const groupManagerPolicy: GroupManagerPolicyInterface = {
+    isGroupManager: async (userId, groupId) => (groupManagers.get(groupId) ?? []).includes(userId),
+    isManager: async (userId) => (await userRepository.findById(userId))?.role === 'manager',
+  };
+  const groupSettingController = new GroupSettingController(
+    new GetGroupSettingUseCase(groupSettingRepository),
+    new UpdateGroupSettingUseCase(groupSettingRepository, groupManagerPolicy, clock),
+    new TransferStaffGroupUseCase(groupSettingRepository, groupManagerPolicy),
+    new GetReportSnapshotUseCase(groupSettingRepository),
   );
   // home の read 専用ポート。reports 本体には触れず、reportRepository を薄くラップして
   // 状態判定に必要な最小ビュー（id・status）だけを読む（依存は read 経由でのみ隔離・slice-07 §3）。
@@ -385,6 +420,10 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/notification-settings', denyPending, createNotificationSettingsRouter({ notificationSettingsController }));
   // slice-19 設問テンプレート（manager のみ）。authUserId が 401・manager 認可 403 は use-case・ガードレール 422。
   app.use('/question-sets', denyPending, createQuestionSetRouter({ questionSetController }));
+  // slice-22 グループ別設定（編集は担当 manager のみ）・過去 snapshot（不変）・移管。deny 後に use-case が認可判定。
+  app.use('/groups', denyPending, createGroupSettingRouter({ groupSettingController }));
+  app.use('/report-snapshots', denyPending, createReportSnapshotRouter({ groupSettingController }));
+  app.use('/admin', denyPending, createStaffTransferRouter({ groupSettingController }));
   // slice-16 リマインドジョブ trigger（背景ジョブ・システム起点につき per-user 認可なし・対象は reader が抽出）。
   app.use('/jobs', createReminderRouter({ reminderController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
@@ -454,6 +493,16 @@ function defaultStaffAccountRepository(): StaffAccountRepositoryInterface {
 function defaultQuestionSetRepository(): QuestionSetRepositoryInterface {
   const repo = new InMemoryQuestionSetRepository();
   seedQuestionSets(repo);
+  return repo;
+}
+
+/**
+ * groupSettingRepository 未注入時の既定（seed 済みインメモリ・slice-22）。
+ * seed（grp_a/grp_b 設定・rs_past スナップショット）はオラクル(server.mjs)と同一＝設定駆動・過去不変の観測源。
+ */
+function defaultGroupSettingRepository(): GroupSettingRepositoryInterface {
+  const repo = new InMemoryGroupSettingRepository();
+  seedGroupSettings(repo);
   return repo;
 }
 

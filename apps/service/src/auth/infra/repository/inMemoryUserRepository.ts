@@ -70,4 +70,7 @@ export function seedUsers(repo: InMemoryUserRepository): void {
     role: 'manager',
     groups: ['grp_engineer', 'grp_sales'],
   });
+  // slice-22: グループ設定の編集担当 manager（grp_a/grp_c 担当は groupManagers seed 側）。移管は manager 権限で実行。
+  void repo.upsert({ id: 'gs_mgr', email: 'gsmgr@example.test', name: 'グループ管理', role: 'manager' });
+  void repo.upsert({ id: 'gs_staff', email: 'gsstaff@example.test', name: 'グループスタッフ', role: 'staff' });
 }

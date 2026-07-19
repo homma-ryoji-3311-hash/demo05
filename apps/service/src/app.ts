@@ -65,6 +65,13 @@ import type { MasterSummaryRepositoryInterface } from './master-summaries/domain
 import type { MasterReconcilerInterface } from './reports/domain/interface/masterReconciler.js';
 import { ReconcileMasterUseCase } from './master-summaries/use-case/reconcileMaster.js';
 import { InMemoryMasterSummaryRepository } from './master-summaries/infra/repository/inMemoryMasterSummaryRepository.js';
+import type { NotificationSettingsRepositoryInterface } from './notifications/domain/interface/notificationSettingsRepository.js';
+import type { UserTimezoneReaderInterface } from './notifications/domain/interface/userTimezoneReader.js';
+import { GetNotificationSettingsUseCase } from './notifications/use-case/getNotificationSettings.js';
+import { UpdateNotificationSettingsUseCase } from './notifications/use-case/updateNotificationSettings.js';
+import { NotificationSettingsController } from './notifications/interfaceAdapter/api/controller/notificationSettingsController.js';
+import { createNotificationSettingsRouter } from './notifications/interfaceAdapter/api/route/notificationSettingsRoute.js';
+import { InMemoryNotificationSettingsRepository } from './notifications/infra/repository/inMemoryNotificationSettingsRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -86,6 +93,8 @@ export interface AppDependencies {
   projectRepository?: ProjectRepositoryInterface;
   /** 省略時は空のインメモリ実装（slice-12・突合済みマスター）。 */
   masterSummaryRepository?: MasterSummaryRepositoryInterface;
+  /** 省略時は空のインメモリ実装（slice-13・通知設定・user_id 単位）。 */
+  notificationSettingsRepository?: NotificationSettingsRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -105,6 +114,8 @@ export function createApp(deps: AppDependencies): express.Express {
   const templateRepository = deps.templateRepository ?? defaultTemplateRepository();
   const projectRepository = deps.projectRepository ?? defaultProjectRepository();
   const masterSummaryRepository = deps.masterSummaryRepository ?? new InMemoryMasterSummaryRepository();
+  const notificationSettingsRepository =
+    deps.notificationSettingsRepository ?? new InMemoryNotificationSettingsRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -167,6 +178,18 @@ export function createApp(deps: AppDependencies): express.Express {
     new ActivateTemplateUseCase(templateRepository, userContextReader),
     new ListTemplatesUseCase(templateRepository, userContextReader),
   );
+  // 通知設定の TZ read ポート（slice-13）。auth 本体には触れず userRepository を薄くラップして timezone だけを読む。
+  // 未設定ユーザーは既定 Asia/Tokyo（オラクル userTz の `?? 'Asia/Tokyo'` と同義。合成のみ・home の read ポートと同型）。
+  const userTimezoneReader: UserTimezoneReaderInterface = {
+    getTimezone: async (userId) => {
+      const u = (await userRepository.findById(userId)) as { timezone?: string } | null;
+      return u?.timezone ?? 'Asia/Tokyo';
+    },
+  };
+  const notificationSettingsController = new NotificationSettingsController(
+    new GetNotificationSettingsUseCase(notificationSettingsRepository, userTimezoneReader),
+    new UpdateNotificationSettingsUseCase(notificationSettingsRepository, userTimezoneReader),
+  );
 
   const app = express();
   app.use(requestContext());
@@ -189,6 +212,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/skill-sheets', createSkillSheetRouter({ skillSheetController }));
   // templates は route の authUserId が 401 を担保（slice-10 AC-4）。manager 認可 403 は use-case（id 参照より先）。
   app.use('/templates', createTemplateRouter({ templateController }));
+  // notification-settings は route の authUserId が 401 を担保（slice-13 AC-4）。設定は user_id 単位（本人のみ）。
+  app.use('/notification-settings', createNotificationSettingsRouter({ notificationSettingsController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
   app.use(errorHandler);
   return app;

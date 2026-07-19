@@ -64,6 +64,17 @@ export default defineConfig({
           }
         },
       },
+      // S8 管理者コンソール API（/admin/staff・slice-14）。SPA のルート /admin/staff（page.goto）と衝突するため、
+      // ページ遷移（HTML 要求）は index.html にフォールバックし、fetch（JSON）だけを backend へ転送する。
+      '/admin': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        bypass(req) {
+          if (req.method === 'GET' && req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
     },
   },
 });

@@ -12,6 +12,8 @@ export interface User {
   role: UserRole;
   /** 所属グループ（slice-10: テンプレート管理の版グループ）。staff は未設定でよい。 */
   group_id?: string;
+  /** 担当グループ（複数・slice-14 管理者コンソール）。manager がタブ/可視範囲に使う。未設定なら group_id を単一要素として扱う。 */
+  groups?: string[];
 }
 
 /**

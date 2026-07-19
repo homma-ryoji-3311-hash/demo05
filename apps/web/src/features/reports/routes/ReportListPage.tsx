@@ -67,18 +67,20 @@ export function ReportListPage() {
         </ul>
       )}
 
-      {/* 本人の履行状況（read-only・slice-15 AC-6）。計上・承認などの操作導線は本人には出さない。 */}
+      {/* 本人の履行状況（read-only・slice-15 AC-6）。計上・承認などの操作導線は本人には出さない。
+          非 list 要素で描画する（回帰 slice-28）: /reports の list role は業務報告一覧の1つに保ち、
+          slice-04 の getByRole('list') 単一マッチを壊さない。テキスト表示は維持（slice-15 UI-AC）。 */}
       {state === 'ready' && fulfillment.length > 0 && (
         <section className="mt-6">
           <h2 className="mb-2 text-lg font-bold">履行状況</h2>
-          <ul className="divide-y rounded border">
+          <div className="divide-y rounded border">
             {fulfillment.map((o) => (
-              <li key={o.id} className="flex gap-4 p-3">
+              <div key={o.id} className="flex gap-4 p-3">
                 <span>{o.date}</span>
                 <span>{FULFILLMENT_LABEL[o.status]}</span>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       )}
 

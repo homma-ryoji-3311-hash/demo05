@@ -207,6 +207,29 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-15: 報告サイクル・締切・報告ステータス（5種）の判定セマンティクスを固定（phase2-design §6）。
+// 注意: REST パス・エンティティ・スケジュール生成の詳細は phase2-design §7 の実装時詳細設計。ここの URL は
+// 「セマンティクス fixture」で、テストは状態遷移を pin する（URL 形状に依存しすぎない）。固定時刻型の締切のみ対象。
+const REPORT_CYCLES = ['daily', 'weekly', 'biweekly', 'monthly'];
+const reportCycles = new Map(); // staff_id -> { staff_id, cycle, deadline_local }
+// 機会（報告義務の単位）。5 ステータスは confirmed_at/deadline_utc・flagged_missing・absence_approved の純関数。
+// 並列干渉回避: 読み取り専用機会（sub/late/missing）と mutate 用機会（flag/absent 各テスト専用）を分ける。
+const opportunities = new Map();
+const seedOpp = (o) => opportunities.set(o.id, { eligible: true, confirmed_at: null, flagged_missing: false, absence_approved: false, ...o });
+seedOpp({ id: 'opp_sub', staff_id: 'staff01', date: '2026-07-14', deadline_utc: '2026-07-14T09:00:00Z', confirmed_at: '2026-07-14T08:30:00Z' }); // 締切前確定→submitted
+seedOpp({ id: 'opp_late', staff_id: 'staff01', date: '2026-07-13', deadline_utc: '2026-07-13T09:00:00Z', confirmed_at: '2026-07-13T10:00:00Z' }); // 締切後確定→late
+seedOpp({ id: 'opp_missing', staff_id: 'staff01', date: '2026-07-12', deadline_utc: '2026-07-12T09:00:00Z' }); // 未確定→missing(中立)
+seedOpp({ id: 'opp_flag', staff_id: 'staff01', date: '2026-07-11', deadline_utc: '2026-07-11T09:00:00Z' }); // AC-4 専用: 管理者が計上→報告漏れ
+seedOpp({ id: 'opp_absent', staff_id: 'staff01', date: '2026-07-10', deadline_utc: '2026-07-10T09:00:00Z' }); // AC-5 専用: 申告+承認→欠勤
+// 5 ステータスの純関数判定（phase2-design §6.4）。優先: 欠勤>報告漏れ>提出/遅延>未報告。
+const opportunityStatus = (o) => {
+  if (o.absence_approved) return 'absent'; // 欠勤（申告+管理者承認・AC-5）評価対象外
+  if (o.flagged_missing) return 'unreported_flagged'; // 報告漏れ（管理者が実態確認の上で計上・AC-4）評価に効く
+  if (o.confirmed_at) return o.confirmed_at <= o.deadline_utc ? 'submitted' : 'late'; // 締切前=提出済み / 後=遅延提出（AC-2）
+  return 'missing'; // 締切超過・未確定＝未報告（自動検知の中立・AC-3）評価に効かない
+};
+const opportunityView = (o) => ({ id: o.id, staff_id: o.staff_id, date: o.date, deadline_utc: o.deadline_utc, status: opportunityStatus(o) });
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -334,6 +357,45 @@ const server = createServer(async (req, res) => {
       .filter((t) => t.group_id === group_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
     return json(res, 200, { templates: list });
+  }
+
+  // slice-15 AC-1: 管理者がスタッフの報告サイクル（固定時刻型の締切）を設定/取得する。manager 専用・不正サイクルは 422。
+  if ((m = hit('PUT', /^\/admin\/report-cycles\/([^/]+)$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const body = await readBody(req);
+    if (!body || !REPORT_CYCLES.includes(body.cycle)) return json(res, 422, { error: 'validation_failed', field: 'cycle' });
+    const row = { staff_id: m[1], cycle: body.cycle, deadline_local: typeof body.deadline_local === 'string' ? body.deadline_local : '18:00' };
+    reportCycles.set(m[1], row);
+    return json(res, 200, row);
+  }
+  if ((m = hit('GET', /^\/admin\/report-cycles\/([^/]+)$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const row = reportCycles.get(m[1]);
+    return row ? json(res, 200, row) : json(res, 404, { error: 'not_found' });
+  }
+
+  // slice-15 AC-2/3/6: 本人は自分の履行状況（5 ステータス）を read-only で閲覧する。
+  if (hit('GET', /^\/me\/report-status$/)) {
+    const mine = [...opportunities.values()].filter((o) => o.staff_id === uid && o.eligible).map(opportunityView);
+    return json(res, 200, { opportunities: mine });
+  }
+
+  // slice-15 AC-4: 管理者が実態確認の上「報告漏れ」を計上（未報告→報告漏れ・人間の確認を一枚）。staff は 403（本人は read-only）。
+  if ((m = hit('POST', /^\/admin\/report-status\/([^/]+)\/flag-missing$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' }); // 自動計上でない・本人は不可
+    const o = opportunities.get(m[1]);
+    if (!o) return json(res, 404, { error: 'not_found' });
+    o.flagged_missing = true;
+    return json(res, 200, opportunityView(o));
+  }
+
+  // slice-15 AC-5: 欠勤はスタッフ申告＋管理者承認で付与（消去でなくステータスとして残す）。manager 専用。
+  if ((m = hit('POST', /^\/admin\/report-status\/([^/]+)\/approve-absence$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const o = opportunities.get(m[1]);
+    if (!o) return json(res, 404, { error: 'not_found' });
+    o.absence_approved = true; // 評価対象外・記録として残る（後から経緯を検証できる）
+    return json(res, 200, opportunityView(o));
   }
 
   // slice-01 AC-1/AC-4: POST /reports

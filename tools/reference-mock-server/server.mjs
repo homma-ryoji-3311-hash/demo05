@@ -23,10 +23,11 @@ const ALLOWED_DOMAIN = 'example.test';
 const reports = new Map();
 /** @type {Map<string, any>} users */
 const users = new Map([
-  ['staff01', { id: 'staff01', email: 'staff01@example.test', name: 'テスト太郎', role: 'staff' }],
-  ['staff02', { id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' }],
+  // slice-13: timezone を持つ（通知の保存 UTC・表示/判定ローカルの基準・spec.md §3.8）。
+  ['staff01', { id: 'staff01', email: 'staff01@example.test', name: 'テスト太郎', role: 'staff', timezone: 'Asia/Tokyo' }],
+  ['staff02', { id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff', timezone: 'Asia/Tokyo' }],
   // slice-10: テンプレート管理は manager 権限。合成グループの管理者（下流 backend は同一 seed を持つこと）。
-  ['mgr01', { id: 'mgr01', email: 'mgr01@example.test', name: '管理花子', role: 'manager', group_id: 'grp_synth_eng' }],
+  ['mgr01', { id: 'mgr01', email: 'mgr01@example.test', name: '管理花子', role: 'manager', group_id: 'grp_synth_eng', timezone: 'Asia/Tokyo' }],
 ]);
 let seq = 0;
 const nextId = () => `r_${String(++seq).padStart(4, '0')}`;
@@ -207,6 +208,40 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-13: 通知設定（NOTIFICATION_SETTINGS）。設定は user_id に紐づき本人のみ（AC-4・専用パスに :id を持たせない）。
+// リマインド時刻は「保存 UTC・表示/判定ローカル」（spec.md §3.8・CLAUDE.md 原則9）。実際の送信は slice-16。
+const notificationSettings = new Map(); // user_id -> { remind_time_utc:'HH:MM', slack_enabled, email_enabled }
+const DEFAULT_NOTIFICATION = { remind_time_utc: '09:00', slack_enabled: true, email_enabled: false }; // 未設定時の既定（AC-1）。09:00Z は Asia/Tokyo で 18:00
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/; // 24h "HH:MM"。外れは 422（AC-2）
+const userTz = (uid) => users.get(uid)?.timezone ?? 'Asia/Tokyo'; // 既定 TZ（合成のみ）
+// IANA tz の UTC オフセット（分）。固定参照時刻で決定的に算出（demo: DST 跨ぎの厳密性より決定性を優先。Asia/Tokyo は +540 固定）。
+const tzOffsetMin = (tz) => {
+  const at = new Date('2026-07-15T00:00:00Z');
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+    .formatToParts(at)
+    .reduce((a, x) => ((a[x.type] = x.value), a), {});
+  const asLocal = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  return Math.round((asLocal - at.getTime()) / 60000);
+};
+const hhmmToMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const minToHhmm = (min) => { const x = ((min % 1440) + 1440) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
+const localToUtc = (hhmm, tz) => minToHhmm(hhmmToMin(hhmm) - tzOffsetMin(tz)); // 入力ローカル → 保存 UTC
+const utcToLocal = (hhmm, tz) => minToHhmm(hhmmToMin(hhmm) + tzOffsetMin(tz)); // 保存 UTC → 表示ローカル
+const notificationView = (uid) => {
+  const s = notificationSettings.get(uid) ?? DEFAULT_NOTIFICATION;
+  const tz = userTz(uid);
+  return {
+    remind_time: utcToLocal(s.remind_time_utc, tz), // 表示/判定ローカル（AC-3）
+    remind_time_utc: s.remind_time_utc, // 保存 UTC（往復検証で下流に UTC 正規化を強制・AC-3）
+    slack_enabled: s.slack_enabled,
+    email_enabled: s.email_enabled,
+    timezone: tz,
+  };
+};
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -334,6 +369,28 @@ const server = createServer(async (req, res) => {
       .filter((t) => t.group_id === group_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
     return json(res, 200, { templates: list });
+  }
+
+  // slice-13 AC-1: GET /notification-settings（自分の設定・未設定は既定値・時刻は表示ローカル）
+  if (hit('GET', /^\/notification-settings$/)) {
+    return json(res, 200, notificationView(uid));
+  }
+
+  // slice-13 AC-2/AC-3: PUT /notification-settings（更新）。時刻は保存 UTC へ正規化。不正な時刻形式は 422。
+  if (hit('PUT', /^\/notification-settings$/)) {
+    const body = await readBody(req);
+    if (body === null) return json(res, 422, { error: 'validation_failed' });
+    if (typeof body.remind_time !== 'string' || !HHMM.test(body.remind_time)) {
+      return json(res, 422, { error: 'validation_failed', field: 'remind_time' }); // 不正時刻は保存しない
+    }
+    const tz = userTz(uid);
+    const prev = notificationSettings.get(uid) ?? DEFAULT_NOTIFICATION;
+    notificationSettings.set(uid, {
+      remind_time_utc: localToUtc(body.remind_time, tz), // 入力ローカル → 保存 UTC
+      slack_enabled: typeof body.slack_enabled === 'boolean' ? body.slack_enabled : prev.slack_enabled,
+      email_enabled: typeof body.email_enabled === 'boolean' ? body.email_enabled : prev.email_enabled,
+    });
+    return json(res, 200, notificationView(uid));
   }
 
   // slice-01 AC-1/AC-4: POST /reports

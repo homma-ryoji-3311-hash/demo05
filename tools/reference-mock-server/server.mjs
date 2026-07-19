@@ -207,6 +207,32 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-16: Slack リマインド（短間隔ジョブによる抽出送信）。外部送信は決定的フェイク notifier に差し替え（PM 決定 2026-07-15）。
+// 実 Slack/メールへは送らず、「誰に・どのチャネルで送ったか」を sink として返す。ジョブは run_at(UTC) を受けて対象を抽出する
+// （実スケジューラ・通知抽象化層は downstream。ここの URL は semantics fixture）。判定はローカル時刻・保存 UTC。
+// TZ ヘルパは slice-13 の tzOffsetMin と別名で自己完結（両者マージ時も再宣言衝突を起こさない）。
+const remindTzOffsetMin = (tz) => {
+  const at = new Date('2026-07-15T00:00:00Z');
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(at).reduce((a, x) => ((a[x.type] = x.value), a), {});
+  return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - at.getTime()) / 60000);
+};
+const localToUtcHHMM = (hhmm, tz) => {
+  const [h, mm] = hhmm.split(':').map(Number);
+  const t = (((h * 60 + mm) - remindTzOffsetMin(tz)) % 1440 + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+// 合成のリマインド対象（slice-13 通知設定＋slice-15 提出状況を内包した抽出源。実データ・秘密は入れない）。
+const reminderUsers = [
+  { id: 'ru_tokyo', timezone: 'Asia/Tokyo', remind_local: '18:00', slack_enabled: true, email_enabled: false, submitted: false }, // 18:00 JST → 09:00Z
+  { id: 'ru_sg', timezone: 'Asia/Singapore', remind_local: '18:00', slack_enabled: true, email_enabled: true, submitted: false }, // 同ローカル18:00・別TZ → 10:00Z（AC-2）
+  { id: 'ru_done', timezone: 'Asia/Tokyo', remind_local: '18:00', slack_enabled: true, email_enabled: false, submitted: true }, // 提出済み → 対象外（AC-4）
+  { id: 'ru_noslack', timezone: 'Asia/Tokyo', remind_local: '18:00', slack_enabled: false, email_enabled: false, submitted: false }, // Slack OFF → badge のみ（AC-3）
+];
+const reminderChannels = (u) => ['badge', ...(u.slack_enabled ? ['slack'] : []), ...(u.email_enabled ? ['email'] : [])]; // まずバッジ→設定に従い Slack/メール
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -334,6 +360,19 @@ const server = createServer(async (req, res) => {
       .filter((t) => t.group_id === group_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
     return json(res, 200, { templates: list });
+  }
+
+  // slice-16 AC-1〜4: 短間隔リマインドジョブ。run_at(UTC) に「通知すべきユーザー」を DB から抽出しフェイク notifier へ送る（sink を返す）。
+  if (hit('POST', /^\/jobs\/reminder\/run$/)) {
+    const body = await readBody(req);
+    const runAt = typeof body?.run_at === 'string' ? body.run_at : null;
+    if (!runAt) return json(res, 422, { error: 'validation_failed', field: 'run_at' });
+    const runHHMM = new Date(runAt).toISOString().slice(11, 16); // 実行時刻の UTC HH:MM
+    const notified = reminderUsers
+      .filter((u) => !u.submitted) // 提出済み（提出済みステータス）は対象外（AC-4）
+      .filter((u) => localToUtcHHMM(u.remind_local, u.timezone) === runHHMM) // ローカル時刻を UTC 換算して一致で抽出（AC-1/AC-2）
+      .map((u) => ({ user_id: u.id, channels: reminderChannels(u) })); // まずバッジ＋設定に従い Slack/メール（AC-3）
+    return json(res, 200, { run_at: runAt, notified });
   }
 
   // slice-01 AC-1/AC-4: POST /reports

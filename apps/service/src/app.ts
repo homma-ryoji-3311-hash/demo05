@@ -113,6 +113,18 @@ import {
   InMemoryStaffAccountRepository,
   seedStaffAccounts,
 } from './staff-approval/infra/repository/inMemoryStaffAccountRepository.js';
+import type { QuestionSetRepositoryInterface } from './question-sets/domain/interface/questionSetRepository.js';
+import type { ManagerContextReaderInterface as QuestionSetManagerReaderInterface } from './question-sets/domain/interface/managerContextReader.js';
+import { CreateQuestionSetUseCase } from './question-sets/use-case/createQuestionSet.js';
+import { UpdateQuestionSetUseCase } from './question-sets/use-case/updateQuestionSet.js';
+import { GetQuestionSetUseCase } from './question-sets/use-case/getQuestionSet.js';
+import { PublishQuestionSetUseCase } from './question-sets/use-case/publishQuestionSet.js';
+import { QuestionSetController } from './question-sets/interfaceAdapter/api/controller/questionSetController.js';
+import { createQuestionSetRouter } from './question-sets/interfaceAdapter/api/route/questionSetRoute.js';
+import {
+  InMemoryQuestionSetRepository,
+  seedQuestionSets,
+} from './question-sets/infra/repository/inMemoryQuestionSetRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -146,6 +158,8 @@ export interface AppDependencies {
   notifier?: NotifierInterface;
   /** 省略時は seed 済み（pend_ac1/2/3=pending）のインメモリ実装（slice-17・deny-by-default／承認）。 */
   staffAccountRepository?: StaffAccountRepositoryInterface;
+  /** 省略時は seed 済み（qs_seed_v1）のインメモリ実装（slice-19・設問テンプレート・版管理）。 */
+  questionSetRepository?: QuestionSetRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -174,6 +188,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const notifier = deps.notifier ?? new FakeNotifier();
   // slice-17: 承認状態ストア（deny-by-default／承認の源泉）。承認は super admin（approverContextReader）が判定。
   const staffAccountRepository = deps.staffAccountRepository ?? defaultStaffAccountRepository();
+  const questionSetRepository = deps.questionSetRepository ?? defaultQuestionSetRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -217,6 +232,16 @@ export function createApp(deps: AppDependencies): express.Express {
   const staffApprovalController = new StaffApprovalController(
     new ListPendingStaffUseCase(staffAccountRepository, approverContextReader),
     new ApproveStaffUseCase(staffAccountRepository, approverContextReader),
+  );
+  // slice-19: 設問セット操作は manager のみ。auth を薄くラップして role を読む（他の read ポートと同型）。
+  const questionSetManagerReader: QuestionSetManagerReaderInterface = {
+    isManager: async (userId) => (await userRepository.findById(userId))?.role === 'manager',
+  };
+  const questionSetController = new QuestionSetController(
+    new CreateQuestionSetUseCase(questionSetRepository, questionSetManagerReader, generateId),
+    new UpdateQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
+    new GetQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
+    new PublishQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
   );
   // home の read 専用ポート。reports 本体には触れず、reportRepository を薄くラップして
   // 状態判定に必要な最小ビュー（id・status）だけを読む（依存は read 経由でのみ隔離・slice-07 §3）。
@@ -321,6 +346,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/admin', denyPending, createStaffApprovalRouter({ staffApprovalController }));
   // notification-settings は route の authUserId が 401 を担保（slice-13 AC-4）。設定は user_id 単位（本人のみ）。
   app.use('/notification-settings', denyPending, createNotificationSettingsRouter({ notificationSettingsController }));
+  // slice-19 設問テンプレート（manager のみ）。authUserId が 401・manager 認可 403 は use-case・ガードレール 422。
+  app.use('/question-sets', denyPending, createQuestionSetRouter({ questionSetController }));
   // slice-16 リマインドジョブ trigger（背景ジョブ・システム起点につき per-user 認可なし・対象は reader が抽出）。
   app.use('/jobs', createReminderRouter({ reminderController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
@@ -380,6 +407,16 @@ function defaultReportStatusRepository(): ReportStatusRepositoryInterface {
 function defaultStaffAccountRepository(): StaffAccountRepositoryInterface {
   const repo = new InMemoryStaffAccountRepository();
   seedStaffAccounts(repo);
+  return repo;
+}
+
+/**
+ * questionSetRepository 未注入時の既定（seed 済みインメモリ・slice-19）。
+ * seed（qs_seed_v1・grp_engineer の published v1）はオラクル(server.mjs)と同一＝版管理（過去版不変）の観測源。
+ */
+function defaultQuestionSetRepository(): QuestionSetRepositoryInterface {
+  const repo = new InMemoryQuestionSetRepository();
+  seedQuestionSets(repo);
   return repo;
 }
 

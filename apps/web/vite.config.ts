@@ -91,6 +91,17 @@ export default defineConfig({
           }
         },
       },
+      // S10 設問テンプレート API（/question-sets・slice-19）。SPA のルート /question-sets（page.goto）と衝突するため、
+      // ページ遷移（HTML 要求）は index.html にフォールバックし、fetch（JSON）だけを backend へ転送する。
+      '/question-sets': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        bypass(req) {
+          if (req.method === 'GET' && req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
     },
   },
 });

@@ -8,6 +8,7 @@ import { TemplateManagePage } from './features/templates';
 import { AdminConsolePage } from './features/admin';
 import { NotificationSettingsPage } from './features/notifications';
 import { ApprovalConsolePage, PendingApprovalPage } from './features/staff-approval';
+import { QuestionSetEditorPage } from './features/question-sets';
 
 // 静的パス（/reports/new）は動的パス（/reports/:id）より優先される（react-router のランク付け）。
 // 保護ルート（reports 配下）は RequireAuth で包む。未ログインは /login へ誘導（slice-06 UI-AC）。
@@ -79,6 +80,15 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <PendingApprovalPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    // S10 設問テンプレート編集（slice-19・manager）。保護ルート＝未ログインは /login へ（RequireAuth）。
+    path: '/question-sets',
+    element: (
+      <RequireAuth>
+        <QuestionSetEditorPage />
       </RequireAuth>
     ),
   },

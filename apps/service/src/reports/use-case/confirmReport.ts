@@ -40,14 +40,17 @@ export class ConfirmReportUseCase {
     await this.repo.save(report);
 
     // slice-12: 突合（確定に同期）。紐づけ結果の project_id と、リクエストの incident（key つき）を
-    // 案件キーで対応づけて突合へ渡す。master 側にのみ upsert し、report は書き換えない（AC-3）。
+    // **位置で対応づける**（linker は input.projects を順に処理し linked.projects に push するため index が一致）。
+    // 案件キーの find だと同一 project_key が複数あるとき取り違えるため index 対応にする。master 側にのみ upsert
+    // し、report は書き換えない（AC-3）。
+    const inputProjects = Array.isArray(input.projects) ? (input.projects as Record<string, unknown>[]) : [];
     const masterSummaries = this.masterReconciler
       ? await this.masterReconciler.reconcile({
           userId: input.userId,
           reportDate: report.reportDate,
-          projects: linked.projects.map((lp) => ({
+          projects: linked.projects.map((lp, i) => ({
             project_id: lp.id,
-            incidents: incidentsForKey(input.projects, lp.project_key),
+            incidents: incidentsOf(inputProjects[i]),
           })),
         })
       : [];
@@ -56,9 +59,7 @@ export class ConfirmReportUseCase {
   }
 }
 
-/** 確定リクエストの projects から、指定 project_key の incidents（key つき）を取り出す。 */
-function incidentsForKey(projects: unknown, projectKey: string): { key?: string; status: string }[] {
-  const list = Array.isArray(projects) ? (projects as Record<string, unknown>[]) : [];
-  const match = list.find((p) => String(p.project_key ?? '') === projectKey);
-  return Array.isArray(match?.incidents) ? (match.incidents as { key?: string; status: string }[]) : [];
+/** 確定リクエストの1案件から incidents（key つき）を取り出す。 */
+function incidentsOf(project: Record<string, unknown> | undefined): { key?: string; status: string }[] {
+  return Array.isArray(project?.incidents) ? (project.incidents as { key?: string; status: string }[]) : [];
 }

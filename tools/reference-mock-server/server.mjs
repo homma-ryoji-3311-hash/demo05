@@ -27,6 +27,8 @@ const users = new Map([
   ['staff02', { id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' }],
   // slice-10: テンプレート管理は manager 権限。合成グループの管理者（下流 backend は同一 seed を持つこと）。
   ['mgr01', { id: 'mgr01', email: 'mgr01@example.test', name: '管理花子', role: 'manager', group_id: 'grp_synth_eng' }],
+  // slice-22: グループ設定の編集担当 manager（grp_a・grp_c を担当。grp_b や mgr01 は非担当＝編集 403）。
+  ['gs_mgr', { id: 'gs_mgr', email: 'gsmgr@example.test', name: '設定管理', role: 'manager', groups: ['grp_a', 'grp_c'] }],
 ]);
 let seq = 0;
 const nextId = () => `r_${String(++seq).padStart(4, '0')}`;
@@ -207,6 +209,20 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-22: グループ別設定（設定駆動）。グループ固有部分（設問セット版・様式・タブ）を設定データで切替。翌日反映・過去不変・移管履歴。
+// 担当範囲の正確な解決（権限3軸）は slice-24 へ。ここは spec.md §1.3・§6.2「グループ単位・バックエンド強制」まで。
+const groupSettings = new Map(); // group_id -> { group_id, question_set_version, template_style, tab_label, effective_from }
+const setGroupSetting = (g) => groupSettings.set(g.group_id, g);
+setGroupSetting({ group_id: 'grp_a', question_set_version: 'v2', template_style: 'style_default', tab_label: '開発', effective_from: '2026-07-01' });
+setGroupSetting({ group_id: 'grp_b', question_set_version: 'v1', template_style: 'style_marketer', tab_label: 'マーケ', effective_from: '2026-07-01' });
+const groupManagers = new Map([['grp_a', ['gs_mgr']], ['grp_b', []], ['grp_c', ['gs_mgr']]]); // 編集担当（AC-4）
+const isGroupManager = (uid, groupId) => (groupManagers.get(groupId) ?? []).includes(uid);
+const nextBusinessDay = () => { const d = new Date(); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); }; // 翌日（営業日計算の詳細は downstream）
+// AC-3/AC-5: 過去の確定報告は作成時点の group/設定を保持（不変履歴）。移管しても過去は元グループのまま。
+const reportSnapshots = new Map(); // report_id -> { report_id, staff_id, group_id, applied_settings }
+reportSnapshots.set('rs_past', { report_id: 'rs_past', staff_id: 'gs_staff', group_id: 'grp_a', applied_settings: { question_set_version: 'v2', template_style: 'style_default' } });
+const staffCurrentGroup = new Map([['gs_staff', 'grp_a']]); // 現在の所属（移管で変わるが過去報告の group_id は不変・AC-5）
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -334,6 +350,41 @@ const server = createServer(async (req, res) => {
       .filter((t) => t.group_id === group_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
     return json(res, 200, { templates: list });
+  }
+
+  // slice-22 AC-1/AC-2: グループ設定を解決して返す（グループ固有部分は設定データから・新グループも設定追加だけで解決）。
+  if ((m = hit('GET', /^\/groups\/([^/]+)\/settings$/))) {
+    const g = groupSettings.get(m[1]);
+    return g ? json(res, 200, g) : json(res, 404, { error: 'not_found' });
+  }
+  // slice-22 AC-2/AC-3/AC-4: グループ設定を編集（担当 manager のみ）。変更は翌日以降に適用（effective_from）。過去報告は不変。
+  if ((m = hit('PUT', /^\/groups\/([^/]+)\/settings$/))) {
+    if (!isGroupManager(uid, m[1])) return json(res, 403, { error: 'forbidden' }); // 担当外 manager・staff は 403（AC-4）
+    const body = await readBody(req);
+    if (body === null) return json(res, 422, { error: 'validation_failed' });
+    const prev = groupSettings.get(m[1]) ?? { group_id: m[1] };
+    const next = {
+      group_id: m[1],
+      question_set_version: typeof body.question_set_version === 'string' ? body.question_set_version : prev.question_set_version ?? null,
+      template_style: typeof body.template_style === 'string' ? body.template_style : prev.template_style ?? null,
+      tab_label: typeof body.tab_label === 'string' ? body.tab_label : prev.tab_label ?? null,
+      effective_from: nextBusinessDay(), // 翌日以降に適用（AC-3）
+    };
+    groupSettings.set(m[1], next);
+    return json(res, 200, next);
+  }
+  // slice-22 AC-3/AC-5: 過去の確定報告スナップショット（作成時点の group/設定・不変）。
+  if ((m = hit('GET', /^\/report-snapshots\/([^/]+)$/))) {
+    const snap = reportSnapshots.get(m[1]);
+    return snap ? json(res, 200, snap) : json(res, 404, { error: 'not_found' });
+  }
+  // slice-22 AC-5: スタッフのグループ移管（現在の所属を変える）。過去報告スナップショットは変えない（元グループの不変履歴）。
+  if ((m = hit('POST', /^\/admin\/staff\/([^/]+)\/transfer$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const body = await readBody(req);
+    if (typeof body?.to_group !== 'string') return json(res, 422, { error: 'validation_failed', field: 'to_group' });
+    staffCurrentGroup.set(m[1], body.to_group); // 現在の所属のみ変更（過去 snapshot は不変）
+    return json(res, 200, { staff_id: m[1], current_group: body.to_group });
   }
 
   // slice-01 AC-1/AC-4: POST /reports

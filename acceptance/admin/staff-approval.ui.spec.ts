@@ -4,7 +4,18 @@
 // UI ルートは API パスに合わせる（/admin/staff/pending）。承認待ち一覧の可視範囲＝super admin（PM 決定）。
 import { test, expect } from '@playwright/test';
 
+const UI_BASE = process.env.ACCEPTANCE_UI_BASE_URL ?? 'http://localhost:5173';
+
 test.describe('slice-17 staff-approval [ui] — S12 承認待ち／承認・担当紐付け', () => {
+  // S12 承認画面は super admin 専用 → ui セッションを super01 に上書きする（既定 staff01 では 403 でデータが出ない・
+  // slice-10 の mgr01 上書き前例と同型・工程4 翻訳欠陥修正）。
+  test.use({
+    storageState: {
+      cookies: [],
+      origins: [{ origin: UI_BASE, localStorage: [{ name: 'session', value: 'super01' }] }],
+    },
+  });
+
   // UI-AC: 承認待ちスタッフ一覧が表示され、各行から承認へ進める
   test('承認待ちスタッフ一覧が表示され承認導線がある', async ({ page }) => {
     await page.goto('/admin/staff/pending');

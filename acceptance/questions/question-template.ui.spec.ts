@@ -3,7 +3,18 @@
 // golden は撮らず role/DOM アサーションへ縮退。UI ルートは API パスに合わせる（/question-sets）。
 import { test, expect } from '@playwright/test';
 
+const UI_BASE = process.env.ACCEPTANCE_UI_BASE_URL ?? 'http://localhost:5173';
+
 test.describe('slice-19 question-template-editor [ui] — S10 設問テンプレート編集', () => {
+  // S10 設問テンプレート編集は manager 専用 → ui セッションを mgr01 に上書きする（既定 staff01 では 403・
+  // slice-10 の mgr01 上書き前例と同型・工程4 翻訳欠陥修正）。
+  test.use({
+    storageState: {
+      cookies: [],
+      origins: [{ origin: UI_BASE, localStorage: [{ name: 'session', value: 'mgr01' }] }],
+    },
+  });
+
   // UI-AC: 設問の追加・削除・並べ替えができる
   test('設問の追加・並べ替えの操作が表示される', async ({ page }) => {
     await page.goto('/question-sets');

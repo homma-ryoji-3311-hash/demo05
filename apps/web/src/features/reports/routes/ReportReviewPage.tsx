@@ -67,6 +67,8 @@ export function ReportReviewPage() {
   // slice-23: AI 追加質問（薄い項目へ一度きり）。必須未回答なら確定を無効化する。
   const [followUp, setFollowUp] = useState<FollowUpDto | null>(null);
   const [followUpAnswer, setFollowUpAnswer] = useState('');
+  // 回答欄は明示操作で開く。マウント時に本文以外の textbox を増やさない（要約フローの単一 textbox 前提を壊さない）。
+  const [showAnswerBox, setShowAnswerBox] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -211,21 +213,29 @@ export function ReportReviewPage() {
         <section aria-label="追加質問" className="mt-4 rounded border bg-blue-50 p-3">
           <h2 className="mb-1 font-medium">AI 追加質問</h2>
           <p className="mb-2 text-sm">{followUp.question ?? 'より具体的な内容を教えてください。'}</p>
-          <textarea
-            aria-label="追加質問への回答"
-            value={followUpAnswer}
-            onChange={(e) => setFollowUpAnswer(e.target.value)}
-            className="mb-2 w-full rounded border p-2"
-            placeholder="ここに回答を入力してください"
-          />
-          <button type="button" onClick={onAnswerFollowUp} className="rounded border px-3 py-1">
-            回答を送信
-          </button>
-          <p className="mt-2 text-sm text-gray-700">
+          <p className="mb-2 text-sm text-gray-700">
             {followUp.required
               ? '必須の追加質問です。回答してください（未回答のままでは確定できません）。'
               : '任意の追加質問です。回答してください（未回答でも確定できます）。'}
           </p>
+          {!showAnswerBox ? (
+            <button type="button" onClick={() => setShowAnswerBox(true)} className="rounded border px-3 py-1">
+              回答する
+            </button>
+          ) : (
+            <>
+              <textarea
+                aria-label="追加質問への回答"
+                value={followUpAnswer}
+                onChange={(e) => setFollowUpAnswer(e.target.value)}
+                className="mb-2 w-full rounded border p-2"
+                placeholder="ここに回答を入力してください"
+              />
+              <button type="button" onClick={onAnswerFollowUp} className="rounded border px-3 py-1">
+                回答を送信
+              </button>
+            </>
+          )}
         </section>
       )}
 

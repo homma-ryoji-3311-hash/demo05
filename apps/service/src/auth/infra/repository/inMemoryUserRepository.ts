@@ -46,4 +46,31 @@ export function seedUsers(repo: InMemoryUserRepository): void {
     role: 'manager',
     groups: ['G1', 'G3'],
   });
+  // slice-17: 承認主体＝super admin（承認・承認待ち一覧の可視範囲）。オラクル server.mjs の super01 と同一 seed。
+  void repo.upsert({ id: 'super01', email: 'super01@example.test', name: '統括管理', role: 'super_admin' });
+  // slice-17: 新規スタッフ（deny-by-default・承認待ち）。承認状態そのものは staffAccountRepository が源泉（オラクル parity）。
+  void repo.upsert({ id: 'pend_ac1', email: 'newstaff1@example.test', name: '新人一', role: 'staff' });
+  void repo.upsert({ id: 'pend_ac2', email: 'newstaff2@example.test', name: '新人二', role: 'staff' });
+  void repo.upsert({ id: 'pend_ac3', email: 'newstaff3@example.test', name: '新人三', role: 'staff' });
+  // slice-20: 雑感の閲覧最小ロール検証用。care01=メンタルケア担当・mgr_other=担当外 manager（雑感を見られない）。
+  // オラクル server.mjs の care01/mgr_other と同一 seed。
+  void repo.upsert({ id: 'care01', email: 'care01@example.test', name: 'ケア担当', role: 'mental_care' });
+  void repo.upsert({
+    id: 'mgr_other',
+    email: 'mgrother@example.test',
+    name: '別管理',
+    role: 'manager',
+    group_id: 'grp_other',
+  });
+  // slice-21: 一括ダウンロードの担当 manager（grp_engineer/grp_sales 担当）。オラクル server.mjs の bulk_mgr と同一 seed。
+  void repo.upsert({
+    id: 'bulk_mgr',
+    email: 'bulkmgr@example.test',
+    name: '一括管理',
+    role: 'manager',
+    groups: ['grp_engineer', 'grp_sales'],
+  });
+  // slice-22: グループ設定の編集担当 manager（grp_a/grp_c 担当は groupManagers seed 側）。移管は manager 権限で実行。
+  void repo.upsert({ id: 'gs_mgr', email: 'gsmgr@example.test', name: 'グループ管理', role: 'manager' });
+  void repo.upsert({ id: 'gs_staff', email: 'gsstaff@example.test', name: 'グループスタッフ', role: 'staff' });
 }

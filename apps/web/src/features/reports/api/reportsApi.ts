@@ -17,6 +17,46 @@ export async function fetchReports(): Promise<ReportDto[]> {
   return res.reports;
 }
 
+/** ソフト設問回答（slice-20・送信形）。雑感はサーバで AI/シートから完全除外・応答には出さない。 */
+export interface SoftAnswersInput {
+  ai_use?: string;
+  issue?: string;
+  shokan?: string;
+  zakkan?: string;
+  zakkan_visibility?: 'limited' | 'private';
+}
+
+/** ソフト設問回答を保存（slice-20・本人のみ）。応答は { id, saved } のみ（雑感・スコアは返らない）。 */
+export async function saveSoftAnswers(id: string, data: SoftAnswersInput): Promise<{ id: string; saved: boolean }> {
+  return apiFetch<{ id: string; saved: boolean }>(`/reports/${encodeURIComponent(id)}/soft-answers`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/** AI 追加質問の状態（slice-23・backend と等価）。 */
+export interface FollowUpDto {
+  state: string;
+  required?: boolean;
+  question?: string;
+}
+
+/** 追加質問を生成・提示（slice-23・一度きり・薄い項目のみ）。既に提示済みなら同一を返す。 */
+export async function requestFollowUp(id: string): Promise<FollowUpDto> {
+  return apiFetch<FollowUpDto>(`/reports/${encodeURIComponent(id)}/follow-up`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+/** 追加質問へ回答（slice-23・本文へ追記＋要約作り直し・下書きのまま）。 */
+export async function answerFollowUp(id: string, answer: string): Promise<{ raw_text: string; status: string }> {
+  return apiFetch<{ raw_text: string; status: string }>(`/reports/${encodeURIComponent(id)}/follow-up/answer`, {
+    method: 'POST',
+    body: JSON.stringify({ answer }),
+  });
+}
+
 /** 履行状況の5ステータス（slice-15・backend と等価）。 */
 export type FulfillmentStatus = 'submitted' | 'late' | 'missing' | 'unreported_flagged' | 'absent';
 

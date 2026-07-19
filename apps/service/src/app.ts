@@ -20,6 +20,11 @@ import { ConfirmReportUseCase } from './reports/use-case/confirmReport.js';
 import { ListReportsUseCase } from './reports/use-case/listReports.js';
 import { LoadOwnedReportUseCase } from './reports/use-case/loadOwnedReport.js';
 import { GetPreviousReportUseCase } from './reports/use-case/getPreviousReport.js';
+import { SaveSoftAnswersUseCase } from './reports/use-case/saveSoftAnswers.js';
+import { ViewZakkanUseCase } from './reports/use-case/viewZakkan.js';
+import type { ZakkanViewerPolicyInterface } from './reports/domain/interface/zakkanViewerPolicy.js';
+import { RequestFollowUpUseCase } from './reports/use-case/requestFollowUp.js';
+import { AnswerFollowUpUseCase } from './reports/use-case/answerFollowUp.js';
 import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
@@ -49,6 +54,14 @@ import {
   seedSkillSheets,
 } from './skillsheets/infra/repository/inMemorySkillSheetRepository.js';
 import { FakeSheetParaphraser } from './skillsheets/infra/paraphraser/fakeSheetParaphraser.js';
+import type { StaffRosterReaderInterface } from './skillsheets/domain/interface/staffRosterReader.js';
+import { BulkGenerateSkillSheetsUseCase } from './skillsheets/use-case/bulkGenerateSkillSheets.js';
+import { SkillSheetZipPackager } from './skillsheets/infra/zip/skillSheetZipPackager.js';
+import { createBulkSkillSheetRouter } from './skillsheets/interfaceAdapter/api/route/skillSheetRoute.js';
+import {
+  InMemoryStaffRosterReader,
+  seedStaffRoster,
+} from './skillsheets/infra/repository/inMemoryStaffRosterReader.js';
 import type { TemplateRepositoryInterface } from './templates/domain/interface/templateRepository.js';
 import type { UserContextReaderInterface } from './templates/domain/interface/userContextReader.js';
 import { UploadTemplateUseCase } from './templates/use-case/uploadTemplate.js';
@@ -92,6 +105,55 @@ import { UpdateNotificationSettingsUseCase } from './notifications/use-case/upda
 import { NotificationSettingsController } from './notifications/interfaceAdapter/api/controller/notificationSettingsController.js';
 import { createNotificationSettingsRouter } from './notifications/interfaceAdapter/api/route/notificationSettingsRoute.js';
 import { InMemoryNotificationSettingsRepository } from './notifications/infra/repository/inMemoryNotificationSettingsRepository.js';
+import type { ReminderTargetReaderInterface } from './reminders/domain/interface/reminderTargetReader.js';
+import type { NotifierInterface } from './reminders/domain/interface/notifier.js';
+import { RunReminderJobUseCase } from './reminders/use-case/runReminderJob.js';
+import { ReminderController } from './reminders/interfaceAdapter/api/controller/reminderController.js';
+import { createReminderRouter } from './reminders/interfaceAdapter/api/route/reminderRoute.js';
+import {
+  InMemoryReminderTargetReader,
+  seedReminderTargets,
+} from './reminders/infra/repository/inMemoryReminderTargetReader.js';
+import { FakeNotifier } from './reminders/infra/notifier/fakeNotifier.js';
+import type { StaffAccountRepositoryInterface } from './staff-approval/domain/interface/staffAccountRepository.js';
+import type { ApproverContextReaderInterface } from './staff-approval/domain/interface/approverContextReader.js';
+import { ListPendingStaffUseCase } from './staff-approval/use-case/listPendingStaff.js';
+import { ApproveStaffUseCase } from './staff-approval/use-case/approveStaff.js';
+import { StaffApprovalController } from './staff-approval/interfaceAdapter/api/controller/staffApprovalController.js';
+import { createStaffApprovalRouter } from './staff-approval/interfaceAdapter/api/route/staffApprovalRoute.js';
+import { denyByDefault } from './staff-approval/interfaceAdapter/api/middleware/denyByDefault.js';
+import {
+  InMemoryStaffAccountRepository,
+  seedStaffAccounts,
+} from './staff-approval/infra/repository/inMemoryStaffAccountRepository.js';
+import type { QuestionSetRepositoryInterface } from './question-sets/domain/interface/questionSetRepository.js';
+import type { ManagerContextReaderInterface as QuestionSetManagerReaderInterface } from './question-sets/domain/interface/managerContextReader.js';
+import { CreateQuestionSetUseCase } from './question-sets/use-case/createQuestionSet.js';
+import { UpdateQuestionSetUseCase } from './question-sets/use-case/updateQuestionSet.js';
+import { GetQuestionSetUseCase } from './question-sets/use-case/getQuestionSet.js';
+import { PublishQuestionSetUseCase } from './question-sets/use-case/publishQuestionSet.js';
+import { QuestionSetController } from './question-sets/interfaceAdapter/api/controller/questionSetController.js';
+import { createQuestionSetRouter } from './question-sets/interfaceAdapter/api/route/questionSetRoute.js';
+import {
+  InMemoryQuestionSetRepository,
+  seedQuestionSets,
+} from './question-sets/infra/repository/inMemoryQuestionSetRepository.js';
+import type { GroupSettingRepositoryInterface } from './group-settings/domain/interface/groupSettingRepository.js';
+import type { GroupManagerPolicyInterface } from './group-settings/domain/interface/groupManagerPolicy.js';
+import { GetGroupSettingUseCase } from './group-settings/use-case/getGroupSetting.js';
+import { UpdateGroupSettingUseCase } from './group-settings/use-case/updateGroupSetting.js';
+import { TransferStaffGroupUseCase } from './group-settings/use-case/transferStaffGroup.js';
+import { GetReportSnapshotUseCase } from './group-settings/use-case/getReportSnapshot.js';
+import { GroupSettingController } from './group-settings/interfaceAdapter/api/controller/groupSettingController.js';
+import {
+  createGroupSettingRouter,
+  createReportSnapshotRouter,
+  createStaffTransferRouter,
+} from './group-settings/interfaceAdapter/api/route/groupSettingRoute.js';
+import {
+  InMemoryGroupSettingRepository,
+  seedGroupSettings,
+} from './group-settings/infra/repository/inMemoryGroupSettingRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -119,6 +181,18 @@ export interface AppDependencies {
   adminStaffReader?: AdminStaffReaderInterface;
   /** 省略時は空のインメモリ実装（slice-13・通知設定・user_id 単位）。 */
   notificationSettingsRepository?: NotificationSettingsRepositoryInterface;
+  /** 省略時は seed 済み（ru_tokyo/ru_sg/ru_done/ru_noslack）のインメモリ抽出源（slice-16・オラクル parity）。 */
+  reminderTargetReader?: ReminderTargetReaderInterface;
+  /** 省略時は決定的フェイク notifier（実送信ゼロ・sink 捕捉）。実 Slack/メールはここに注入（slice-16 PM 決定）。 */
+  notifier?: NotifierInterface;
+  /** 省略時は seed 済み（pend_ac1/2/3=pending）のインメモリ実装（slice-17・deny-by-default／承認）。 */
+  staffAccountRepository?: StaffAccountRepositoryInterface;
+  /** 省略時は seed 済み（qs_seed_v1）のインメモリ実装（slice-19・設問テンプレート・版管理）。 */
+  questionSetRepository?: QuestionSetRepositoryInterface;
+  /** 省略時は seed 済み（bs_1/bs_2/bs_3）のインメモリ台帳（slice-21・一括ダウンロードの対象決定）。 */
+  staffRosterReader?: StaffRosterReaderInterface;
+  /** 省略時は seed 済み（grp_a/grp_b・rs_past）のインメモリ実装（slice-22・グループ別設定）。 */
+  groupSettingRepository?: GroupSettingRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -142,6 +216,14 @@ export function createApp(deps: AppDependencies): express.Express {
   const reportStatusRepository = deps.reportStatusRepository ?? defaultReportStatusRepository();
   const notificationSettingsRepository =
     deps.notificationSettingsRepository ?? new InMemoryNotificationSettingsRepository();
+  // slice-16: 抽出源は seed 済みインメモリ（オラクル parity）、notifier は既定でフェイク（実送信ゼロ）。
+  const reminderTargetReader = deps.reminderTargetReader ?? new InMemoryReminderTargetReader(seedReminderTargets());
+  const notifier = deps.notifier ?? new FakeNotifier();
+  // slice-17: 承認状態ストア（deny-by-default／承認の源泉）。承認は super admin（approverContextReader）が判定。
+  const staffAccountRepository = deps.staffAccountRepository ?? defaultStaffAccountRepository();
+  const questionSetRepository = deps.questionSetRepository ?? defaultQuestionSetRepository();
+  const staffRosterReader = deps.staffRosterReader ?? new InMemoryStaffRosterReader(seedStaffRoster());
+  const groupSettingRepository = deps.groupSettingRepository ?? defaultGroupSettingRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -158,6 +240,16 @@ export function createApp(deps: AppDependencies): express.Express {
   };
 
   const greetingController = new GreetingController(new GetGreetingUseCase(greetingRepository, generateId, clock));
+  // slice-20: 雑感の閲覧最小ロール（メンタルケア担当 or 担当 manager）を解決するポリシー。
+  // 担当関係は合成 seed（staff01 → mgr01）。auth を薄くラップして role を読む（他の read ポートと同型）。
+  const assignedManagers = new Map<string, string[]>([['staff01', ['mgr01']]]);
+  const zakkanViewerPolicy: ZakkanViewerPolicyInterface = {
+    canViewLimited: async (viewerId, staffId) => {
+      const viewer = await userRepository.findById(viewerId);
+      if (viewer?.role === 'mental_care') return true;
+      return (assignedManagers.get(staffId) ?? []).includes(viewerId);
+    },
+  };
   const reportController = new ReportController(
     new CreateDraftUseCase(reportRepository, generateId),
     new UpdateDraftUseCase(reportRepository),
@@ -167,10 +259,55 @@ export function createApp(deps: AppDependencies): express.Express {
     new ListReportsUseCase(reportRepository),
     new LoadOwnedReportUseCase(reportRepository),
     new GetPreviousReportUseCase(reportRepository),
+    new SaveSoftAnswersUseCase(reportRepository),
+    new ViewZakkanUseCase(reportRepository, zakkanViewerPolicy),
+    // slice-23: 対象カテゴリ・しきい値は設定値として注入（slice-26 で調整可能）。
+    new RequestFollowUpUseCase(reportRepository, { targetCategories: ['issues'], minLen: 5 }),
+    new AnswerFollowUpUseCase(reportRepository, summarizer),
   );
+  // slice-17: /me が承認状態を返すための seam。auth 本体はロールしか持たないので、承認状態は
+  // staff-approval の staffAccountRepository から読む（レコードなし＝active・オラクル `status ?? 'active'` と同義）。
+  const accountStatusReader = {
+    getStatus: async (userId: string): Promise<string> =>
+      (await staffAccountRepository.findById(userId))?.status ?? 'active',
+  };
   const authController = new AuthController(
     new AuthGoogleCallbackUseCase(userRepository),
-    new GetMeUseCase(userRepository),
+    new GetMeUseCase(userRepository, accountStatusReader),
+  );
+  // slice-17: 承認主体（super admin）を読む cross-module ポート。auth を薄くラップし role を読む（他の read ポートと同型）。
+  const approverContextReader: ApproverContextReaderInterface = {
+    isSuperAdmin: async (userId) => (await userRepository.findById(userId))?.role === 'super_admin',
+  };
+  const staffApprovalController = new StaffApprovalController(
+    new ListPendingStaffUseCase(staffAccountRepository, approverContextReader),
+    new ApproveStaffUseCase(staffAccountRepository, approverContextReader),
+  );
+  // slice-19: 設問セット操作は manager のみ。auth を薄くラップして role を読む（他の read ポートと同型）。
+  const questionSetManagerReader: QuestionSetManagerReaderInterface = {
+    isManager: async (userId) => (await userRepository.findById(userId))?.role === 'manager',
+  };
+  const questionSetController = new QuestionSetController(
+    new CreateQuestionSetUseCase(questionSetRepository, questionSetManagerReader, generateId),
+    new UpdateQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
+    new GetQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
+    new PublishQuestionSetUseCase(questionSetRepository, questionSetManagerReader),
+  );
+  // slice-22: グループ設定の編集担当（groupManagers seed）＋一般 manager（auth の role）を解決するポリシー。
+  const groupManagers = new Map<string, string[]>([
+    ['grp_a', ['gs_mgr']],
+    ['grp_b', []],
+    ['grp_c', ['gs_mgr']],
+  ]);
+  const groupManagerPolicy: GroupManagerPolicyInterface = {
+    isGroupManager: async (userId, groupId) => (groupManagers.get(groupId) ?? []).includes(userId),
+    isManager: async (userId) => (await userRepository.findById(userId))?.role === 'manager',
+  };
+  const groupSettingController = new GroupSettingController(
+    new GetGroupSettingUseCase(groupSettingRepository),
+    new UpdateGroupSettingUseCase(groupSettingRepository, groupManagerPolicy, clock),
+    new TransferStaffGroupUseCase(groupSettingRepository, groupManagerPolicy),
+    new GetReportSnapshotUseCase(groupSettingRepository),
   );
   // home の read 専用ポート。reports 本体には触れず、reportRepository を薄くラップして
   // 状態判定に必要な最小ビュー（id・status）だけを読む（依存は read 経由でのみ隔離・slice-07 §3）。
@@ -185,11 +322,20 @@ export function createApp(deps: AppDependencies): express.Express {
     },
   };
   const homeController = new HomeController(new GetHomeUseCase(reportSummaryReader));
+  // slice-21: 一括生成の呼び出し元コンテキスト（manager 判定＋担当グループ）。auth を薄くラップして role/groups を読む。
+  const bulkCallerReader = {
+    resolve: async (userId: string): Promise<{ isManager: boolean; groups: string[] }> => {
+      const u = await userRepository.findById(userId);
+      const groups = u?.groups ?? (u?.group_id ? [u.group_id] : []);
+      return { isManager: u?.role === 'manager', groups };
+    },
+  };
   const skillSheetController = new SkillSheetController(
     new GenerateSkillSheetUseCase(masterReader, sheetParaphraser, skillSheetRepository, generateId, clock),
     new ListSkillSheetsUseCase(skillSheetRepository),
     new GetSkillSheetForDownloadUseCase(skillSheetRepository),
     new GetSkillSheetPreviewUseCase(skillSheetRepository),
+    new BulkGenerateSkillSheetsUseCase(staffRosterReader, bulkCallerReader, new SkillSheetZipPackager(), clock),
   );
   // templates の認可 read ポート（slice-10 §3「use-case で user.role を read」）。auth 本体には触れず、
   // userRepository を薄くラップして role・group_id だけを読む（home の reportSummaryReader と同型）。
@@ -238,6 +384,8 @@ export function createApp(deps: AppDependencies): express.Express {
     new GetNotificationSettingsUseCase(notificationSettingsRepository, userTimezoneReader),
     new UpdateNotificationSettingsUseCase(notificationSettingsRepository, userTimezoneReader),
   );
+  // slice-16 リマインドジョブ。抽出（reader）→ 通知抽象化層（notifier）へ dispatch。実送信は notifier の背後。
+  const reminderController = new ReminderController(new RunReminderJobUseCase(reminderTargetReader, notifier));
 
   const app = express();
   app.use(requestContext());
@@ -252,22 +400,37 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/auth', createAuthRouter({ authController }));
   // 保護: 未認証は requireAuth が 401（AC-3）。
   app.use('/me', requireAuth, createMeRouter({ authController }));
-  // 本人の履行状況 read-only（slice-15 AC-6）。/me 配下・authUserId が 401 を担保。
+  // 本人の履行状況 read-only（slice-15 AC-6）。/me 配下・authUserId が 401 を担保。deny は掛けない（承認待ちも自分の状態を見られる）。
   app.use('/me', requireAuth, createMyReportStatusRouter({ reportStatusController }));
+  // slice-17 deny-by-default: 未承認（pending）は保護ルート群で 403。requireAuth 後段の共通ガードとして各マウントに1回挿す。
+  // /me・/auth・/api・/jobs（システム起点）には掛けない。承認で active になると通過する（AC-3）。
+  const denyPending = denyByDefault(staffAccountRepository);
   // reports は各ハンドラが authUserId で 401 を担保（slice-04）。所有権 403 は use-case（AC-4）。
-  app.use('/reports', createReportRouter({ reportController }));
+  app.use('/reports', denyPending, createReportRouter({ reportController }));
   // 保護: home ハンドラが authUserId で 401 を担保（slice-07）。集約は read ポート経由でのみ reports を読む。
-  app.use('/home', createHomeRouter({ homeController }));
+  app.use('/home', denyPending, createHomeRouter({ homeController }));
   // skill-sheets は route の authUserId が 401 を担保（slice-08 AC-5）。所有権 403 は use-case。
-  app.use('/skill-sheets', createSkillSheetRouter({ skillSheetController }));
+  app.use('/skill-sheets', denyPending, createSkillSheetRouter({ skillSheetController }));
   // templates は route の authUserId が 401 を担保（slice-10 AC-4）。manager 認可 403 は use-case（id 参照より先）。
-  app.use('/templates', createTemplateRouter({ templateController }));
+  app.use('/templates', denyPending, createTemplateRouter({ templateController }));
   // admin は route の authUserId が 401 を担保（slice-14 AC-4）。manager 認可 403 は use-case（可視範囲より先）。
-  app.use('/admin', createAdminRouter({ adminController }));
+  app.use('/admin', denyPending, createAdminRouter({ adminController }));
   // report-cycles / report-status 操作（slice-15・manager のみ）。/admin 配下・authUserId が 401 を担保。
-  app.use('/admin', createAdminReportStatusRouter({ reportStatusController }));
+  app.use('/admin', denyPending, createAdminReportStatusRouter({ reportStatusController }));
+  // slice-17 承認待ち一覧・承認（super admin のみ）。/admin 配下・deny 後に use-case が super admin 認可を判定。
+  app.use('/admin', denyPending, createStaffApprovalRouter({ staffApprovalController }));
+  // slice-21 スキルシート一括生成（manager のみ）。/admin/skill-sheets/bulk・deny 後に use-case が manager 認可を判定。
+  app.use('/admin', denyPending, createBulkSkillSheetRouter({ skillSheetController }));
   // notification-settings は route の authUserId が 401 を担保（slice-13 AC-4）。設定は user_id 単位（本人のみ）。
-  app.use('/notification-settings', createNotificationSettingsRouter({ notificationSettingsController }));
+  app.use('/notification-settings', denyPending, createNotificationSettingsRouter({ notificationSettingsController }));
+  // slice-19 設問テンプレート（manager のみ）。authUserId が 401・manager 認可 403 は use-case・ガードレール 422。
+  app.use('/question-sets', denyPending, createQuestionSetRouter({ questionSetController }));
+  // slice-22 グループ別設定（編集は担当 manager のみ）・過去 snapshot（不変）・移管。deny 後に use-case が認可判定。
+  app.use('/groups', denyPending, createGroupSettingRouter({ groupSettingController }));
+  app.use('/report-snapshots', denyPending, createReportSnapshotRouter({ groupSettingController }));
+  app.use('/admin', denyPending, createStaffTransferRouter({ groupSettingController }));
+  // slice-16 リマインドジョブ trigger（背景ジョブ・システム起点につき per-user 認可なし・対象は reader が抽出）。
+  app.use('/jobs', createReminderRouter({ reminderController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
   app.use(errorHandler);
   return app;
@@ -314,6 +477,37 @@ function defaultTemplateRepository(): TemplateRepositoryInterface {
 function defaultReportStatusRepository(): ReportStatusRepositoryInterface {
   const repo = new InMemoryReportStatusRepository();
   seedReportStatus(repo);
+  return repo;
+}
+
+/**
+ * staffAccountRepository 未注入時の既定（seed 済みインメモリ・slice-17）。
+ * seed（pend_ac1/2/3=pending）はオラクル(server.mjs users の status)と同一＝deny-by-default／承認の観測源。
+ * pend_ac1 は never-approve（AC-4 の承認待ち一覧に必ず居る）。既存ユーザーはレコードなし＝active 扱い。
+ */
+function defaultStaffAccountRepository(): StaffAccountRepositoryInterface {
+  const repo = new InMemoryStaffAccountRepository();
+  seedStaffAccounts(repo);
+  return repo;
+}
+
+/**
+ * questionSetRepository 未注入時の既定（seed 済みインメモリ・slice-19）。
+ * seed（qs_seed_v1・grp_engineer の published v1）はオラクル(server.mjs)と同一＝版管理（過去版不変）の観測源。
+ */
+function defaultQuestionSetRepository(): QuestionSetRepositoryInterface {
+  const repo = new InMemoryQuestionSetRepository();
+  seedQuestionSets(repo);
+  return repo;
+}
+
+/**
+ * groupSettingRepository 未注入時の既定（seed 済みインメモリ・slice-22）。
+ * seed（grp_a/grp_b 設定・rs_past スナップショット）はオラクル(server.mjs)と同一＝設定駆動・過去不変の観測源。
+ */
+function defaultGroupSettingRepository(): GroupSettingRepositoryInterface {
+  const repo = new InMemoryGroupSettingRepository();
+  seedGroupSettings(repo);
   return repo;
 }
 

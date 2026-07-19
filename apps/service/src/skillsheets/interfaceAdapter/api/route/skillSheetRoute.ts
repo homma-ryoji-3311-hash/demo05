@@ -46,3 +46,21 @@ export function createSkillSheetRouter(deps: { skillSheetController: SkillSheetC
 
   return router;
 }
+
+/**
+ * 一括ダウンロード（slice-21・/admin/skill-sheets/bulk）。manager 限定は use-case（staff 403）。
+ * /admin 配下にマウントする（bare /skill-sheets の一覧/生成とはパスが別＝衝突しない）。
+ */
+export function createBulkSkillSheetRouter(deps: { skillSheetController: SkillSheetController }): Router {
+  const router = Router();
+  const { skillSheetController } = deps;
+
+  router.post('/skill-sheets/bulk', (req, res, next) => {
+    void skillSheetController
+      .bulk(authUserId(req), req.body)
+      .then((r) => res.status(r.status).json(r.body))
+      .catch(next);
+  });
+
+  return router;
+}

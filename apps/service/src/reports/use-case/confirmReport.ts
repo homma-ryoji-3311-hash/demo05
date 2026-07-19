@@ -3,6 +3,7 @@ import type { ReportRepositoryInterface } from '../domain/interface/reportReposi
 import type { ProjectLinkerInterface, LinkedProject, LinkedIncident } from '../domain/interface/projectLinker.js';
 import type { MasterReconcilerInterface, MasterSummaryView } from '../domain/interface/masterReconciler.js';
 import { ReportConfirmedError, ReportForbiddenError, ReportNotFoundError } from '../domain/error/reportErrors.js';
+import { FollowUpRequiredError } from '../domain/model/followUp.js';
 
 /** 確定の結果（slice-03 report ＋ slice-11 案件/インシデント ＋ slice-12 突合済みマスター）。 */
 export interface ConfirmResult {
@@ -30,6 +31,11 @@ export class ConfirmReportUseCase {
     if (!report) throw new ReportNotFoundError(input.id);
     if (report.userId !== input.userId) throw new ReportForbiddenError(input.id); // 他人の報告は確定させない（403）
     if (report.isConfirmed()) throw new ReportConfirmedError(input.id); // AC-3: 二重確定 → 409
+
+    // slice-23: 必須の追加質問が「提示済みかつ未回答（asked）」なら確定をブロック（422）。
+    // 任意（required=false）・回答済み（answered）・degrade（未提示）は通す（「問われていない」を確定不能にしない）。
+    const followUp = report.followUp;
+    if (followUp?.state === 'asked' && followUp.required === true) throw new FollowUpRequiredError();
 
     // slice-11: 案件紐づけ（不正 incident status は confirm する前に 422＝原子性）。
     const linked = this.projectLinker

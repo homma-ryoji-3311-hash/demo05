@@ -91,6 +91,27 @@ export default defineConfig({
           }
         },
       },
+      // S10 設問テンプレート API（/question-sets・slice-19）。SPA のルート /question-sets（page.goto）と衝突するため、
+      // ページ遷移（HTML 要求）は index.html にフォールバックし、fetch（JSON）だけを backend へ転送する。
+      '/question-sets': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        bypass(req) {
+          if (req.method === 'GET' && req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
+      // S8 グループ設定 API（/groups・slice-22）。SPA ルートに /groups は無いので素の転送でよい（page.goto は /admin/group-settings）。
+      '/groups': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      // 過去報告スナップショット API（/report-snapshots・slice-22）。SPA ルートに無いので素の転送。
+      '/report-snapshots': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 });

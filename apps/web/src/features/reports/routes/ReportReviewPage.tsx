@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
+  answerFollowUp,
   confirmReport,
   fetchDraft,
+  requestFollowUp,
   summarizeReport,
   updateDraft,
+  type FollowUpDto,
   type ReportDto,
   type SummaryDto,
 } from '../api/reportsApi';
@@ -61,6 +64,11 @@ export function ReportReviewPage() {
   const [draftState, setDraftState] = useState<DraftState>('loading');
   const [confirmState, setConfirmState] = useState<ConfirmState>('idle');
   const [confirmed, setConfirmed] = useState(false);
+  // slice-23: AI 追加質問（薄い項目へ一度きり）。必須未回答なら確定を無効化する。
+  const [followUp, setFollowUp] = useState<FollowUpDto | null>(null);
+  const [followUpAnswer, setFollowUpAnswer] = useState('');
+  // 回答欄は明示操作で開く。マウント時に本文以外の textbox を増やさない（要約フローの単一 textbox 前提を壊さない）。
+  const [showAnswerBox, setShowAnswerBox] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -83,6 +91,36 @@ export function ReportReviewPage() {
       active = false;
     };
   }, []);
+
+  // slice-23: 下書きが読めたら追加質問を要求（一度きり・薄い項目のみ）。提示済みなら同一が返る。
+  useEffect(() => {
+    if (!reportId) return;
+    let active = true;
+    void requestFollowUp(reportId)
+      .then((fu) => {
+        if (active) setFollowUp(fu);
+      })
+      .catch(() => {
+        /* degrade: 追加質問が取れなくても確認・確定フローは続けられる */
+      });
+    return () => {
+      active = false;
+    };
+  }, [reportId]);
+
+  const onAnswerFollowUp = (): void => {
+    if (!reportId || followUpAnswer.trim() === '') return;
+    void answerFollowUp(reportId, followUpAnswer)
+      .then((res) => {
+        setText(res.raw_text); // 回答は本文へ追記され、要約は作り直される
+        setSavedText(res.raw_text);
+        setFollowUp((prev) => (prev ? { ...prev, state: 'answered' } : prev));
+        setFollowUpAnswer('');
+      })
+      .catch(() => {
+        /* degrade: 回答保存に失敗しても入力は失わない */
+      });
+  };
 
   const onSummarize = (): void => {
     if (!reportId) return; // 読み込み前は押せない（ボタンが disabled）
@@ -170,6 +208,37 @@ export function ReportReviewPage() {
         <p className="mt-4 text-sm">要確認: {reviewCount}件のカテゴリが未記入です。内容を確認してください</p>
       )}
 
+      {/* slice-23: AI 追加質問（薄い項目へ一度きり）。確認画面に提示し、その場で回答できる。 */}
+      {!confirmed && followUp?.state === 'asked' && (
+        <section aria-label="追加質問" className="mt-4 rounded border bg-blue-50 p-3">
+          <h2 className="mb-1 font-medium">AI 追加質問</h2>
+          <p className="mb-2 text-sm">{followUp.question ?? 'より具体的な内容を教えてください。'}</p>
+          <p className="mb-2 text-sm text-gray-700">
+            {followUp.required
+              ? '必須の追加質問です。回答してください（未回答のままでは確定できません）。'
+              : '任意の追加質問です。回答してください（未回答でも確定できます）。'}
+          </p>
+          {!showAnswerBox ? (
+            <button type="button" onClick={() => setShowAnswerBox(true)} className="rounded border px-3 py-1">
+              回答する
+            </button>
+          ) : (
+            <>
+              <textarea
+                aria-label="追加質問への回答"
+                value={followUpAnswer}
+                onChange={(e) => setFollowUpAnswer(e.target.value)}
+                className="mb-2 w-full rounded border p-2"
+                placeholder="ここに回答を入力してください"
+              />
+              <button type="button" onClick={onAnswerFollowUp} className="rounded border px-3 py-1">
+                回答を送信
+              </button>
+            </>
+          )}
+        </section>
+      )}
+
       {!confirmed && (
         <div className="mt-4 flex gap-3">
           {/* 下書きを読み込むまで押せない。押せてしまうと、対象が未確定のまま失敗表示になる。 */}
@@ -184,7 +253,11 @@ export function ReportReviewPage() {
           <button
             type="button"
             onClick={onConfirm}
-            disabled={draftState !== 'ready' || confirmState === 'loading'}
+            disabled={
+              draftState !== 'ready' ||
+              confirmState === 'loading' ||
+              (followUp?.state === 'asked' && followUp.required === true) // 必須未回答は確定を無効化（slice-23）
+            }
             className="rounded bg-green-700 px-4 py-2 text-white disabled:opacity-50"
           >
             確定

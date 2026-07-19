@@ -3,7 +3,18 @@
 // golden は撮らず role/DOM アサーションへ縮退。UI ルートは S8 内の設定領域（/admin/group-settings）。
 import { test, expect } from '@playwright/test';
 
+const UI_BASE = process.env.ACCEPTANCE_UI_BASE_URL ?? 'http://localhost:5173';
+
 test.describe('slice-22 group-settings [ui] — S8 グループ設定領域', () => {
+  // S8 内のグループ設定編集は担当 manager 専用 → ui セッションを gs_mgr（grp_a/grp_c 担当）に上書きする
+  // （既定 staff01 では 403・slice-10 の mgr01 上書き前例と同型・工程4 翻訳欠陥修正）。
+  test.use({
+    storageState: {
+      cookies: [],
+      origins: [{ origin: UI_BASE, localStorage: [{ name: 'session', value: 'gs_mgr' }] }],
+    },
+  });
+
   // UI-AC: グループを選択し、設問セット版・様式・担当・タブ表示を設定できる
   test('グループを選択して設問セット版・様式・タブを設定できる', async ({ page }) => {
     await page.goto('/admin/group-settings');

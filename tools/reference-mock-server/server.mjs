@@ -27,6 +27,8 @@ const users = new Map([
   ['staff02', { id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' }],
   // slice-10: テンプレート管理は manager 権限。合成グループの管理者（下流 backend は同一 seed を持つこと）。
   ['mgr01', { id: 'mgr01', email: 'mgr01@example.test', name: '管理花子', role: 'manager', group_id: 'grp_synth_eng' }],
+  // slice-21: 一括生成の担当 manager（複数グループ grp_engineer/grp_sales を担当）。
+  ['bulk_mgr', { id: 'bulk_mgr', email: 'bulkmgr@example.test', name: '一括管理', role: 'manager', groups: ['grp_engineer', 'grp_sales'] }],
 ]);
 let seq = 0;
 const nextId = () => `r_${String(++seq).padStart(4, '0')}`;
@@ -207,6 +209,17 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-21: 一括ダウンロード（全員分生成・ZIP・客先/部署/グループ絞り込み・未生成はスキップ＋manifest）。manager。
+// ZIP は semantics fixture（entries/skipped/manifest の構造で表現。実 ZIP バイナリ生成は downstream 詳細設計）。
+const bulkMgrGroups = (uid) => { const u = users.get(uid); return u?.groups ?? (u?.group_id ? [u.group_id] : []); };
+const bulkStaff = [
+  { id: 'bs_1', name: 'テスト 太郎', client: 'A社', dept: '開発部', group_id: 'grp_engineer', has_master: true },
+  { id: 'bs_2', name: 'テスト 花子', client: 'B社', dept: '開発部', group_id: 'grp_engineer', has_master: true },
+  { id: 'bs_3', name: 'テスト 次郎', client: 'A社', dept: '営業部', group_id: 'grp_sales', has_master: false }, // マスター未生成→スキップ（AC-5）
+];
+// 出力ファイル名を機械的に付与（[スタッフ名]_[ファイル名]_YYYYMMDD.xlsx・AC-4）。日付は出力日。
+const bulkFilename = (name) => `${name}_スキルシート_${yyyymmdd(process.env.SKILLSHEET_NOW ? new Date(process.env.SKILLSHEET_NOW) : new Date())}.xlsx`;
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -334,6 +347,29 @@ const server = createServer(async (req, res) => {
       .filter((t) => t.group_id === group_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
     return json(res, 200, { templates: list });
+  }
+
+  // slice-21 AC-1〜5: 一括生成。manager のみ・自分の担当グループのみ・客先/部署/グループで絞り込み・未生成はスキップ＋manifest。
+  if (hit('POST', /^\/admin\/skill-sheets\/bulk$/)) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' }); // staff は 403（AC-3）
+    const body = await readBody(req);
+    const groups = bulkMgrGroups(uid);
+    const scope = bulkStaff
+      .filter((s) => groups.includes(s.group_id)) // 自分の担当グループのみ（AC-3）
+      .filter((s) => (typeof body?.group === 'string' ? s.group_id === body.group : true)) // グループ絞り込み（AC-2）
+      .filter((s) => (typeof body?.client === 'string' ? s.client === body.client : true)) // 客先絞り込み（AC-2）
+      .filter((s) => (typeof body?.dept === 'string' ? s.dept === body.dept : true)); // 部署絞り込み（AC-2）
+    const entries = [];
+    const skipped = [];
+    for (const s of scope) {
+      if (s.has_master) entries.push({ staff_id: s.id, filename: bulkFilename(s.name) }); // 最新マスターから生成（AC-1）・機械命名（AC-4）
+      else skipped.push({ staff_id: s.id, reason: 'no_master' }); // 未生成はスキップ（AC-5）
+    }
+    return json(res, 200, {
+      entries, // ZIP に含まれるシート（semantics fixture）
+      skipped,
+      manifest: { generated: entries.length, skipped: skipped.length, skipped_staff: skipped.map((x) => x.staff_id) }, // 除外者一覧を ZIP に同梱（AC-5）
+    });
   }
 
   // slice-01 AC-1/AC-4: POST /reports

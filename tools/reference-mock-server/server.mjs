@@ -207,6 +207,36 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-19: 設問テンプレート編集（グループ単位・順序付き・回答形式/必須/役割タグ・公開ガードレール・版管理）。manager。
+const QUESTION_FORMATS = ['short', 'long', 'select'];
+const ROLE_TAGS = ['project_key', 'status', 'skill', 'internal_only'];
+const REQUIRED_PUBLISH_ROLES = ['project_key', 'skill']; // 公開ガードレール: 各役割 ≥1（不足は公開拒否・AC-3）
+const questionSets = new Map(); // id -> { id, group_id, version|null, status:'draft'|'published', questions:[{order,format,required,role_tag,text}] }
+let qsSeq = 0;
+const nextQsId = () => `qs_${String(++qsSeq).padStart(4, '0')}`;
+const maxPublishedVersion = (groupId) =>
+  [...questionSets.values()].filter((q) => q.group_id === groupId && q.status === 'published').reduce((mx, q) => Math.max(mx, q.version ?? 0), 0);
+// 設問の正規化＋検証（不正な形式/役割タグは 422）。order は配列位置で採番（並べ替えは配列順で表現）。
+const normalizeQuestions = (arr) => {
+  if (!Array.isArray(arr)) return null;
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    const q = arr[i];
+    if (!QUESTION_FORMATS.includes(q?.format) || !ROLE_TAGS.includes(q?.role_tag)) return null;
+    out.push({ order: i + 1, format: q.format, required: q.required === true, role_tag: q.role_tag, text: typeof q.text === 'string' ? q.text : '' });
+  }
+  return out;
+};
+const missingPublishRoles = (questions) => REQUIRED_PUBLISH_ROLES.filter((r) => !questions.some((q) => q.role_tag === r));
+// seed: published v1（過去報告が参照する不変版・AC-4）。
+questionSets.set('qs_seed_v1', {
+  id: 'qs_seed_v1', group_id: 'grp_engineer', version: 1, status: 'published',
+  questions: [
+    { order: 1, format: 'short', required: true, role_tag: 'project_key', text: '案件キー' },
+    { order: 2, format: 'long', required: true, role_tag: 'skill', text: '使ったスキル' },
+  ],
+});
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -334,6 +364,46 @@ const server = createServer(async (req, res) => {
       .filter((t) => t.group_id === group_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
     return json(res, 200, { templates: list });
+  }
+
+  // slice-19 AC-1/AC-2: 設問セットを作成（下書き）。manager 専用。不正な形式/役割タグは 422。
+  if (hit('POST', /^\/question-sets$/)) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const body = await readBody(req);
+    const questions = normalizeQuestions(body?.questions);
+    if (!questions || typeof body.group_id !== 'string') return json(res, 422, { error: 'validation_failed', field: 'questions' });
+    const id = nextQsId();
+    const qs = { id, group_id: body.group_id, version: null, status: 'draft', questions };
+    questionSets.set(id, qs);
+    return json(res, 201, qs);
+  }
+  // slice-19 AC-1: 設問セットを更新（並べ替え含む）。取得時に同じ順序で返る。
+  if ((m = hit('PUT', /^\/question-sets\/([^/]+)$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const qs = questionSets.get(m[1]);
+    if (!qs) return json(res, 404, { error: 'not_found' });
+    const body = await readBody(req);
+    const questions = normalizeQuestions(body?.questions);
+    if (!questions) return json(res, 422, { error: 'validation_failed', field: 'questions' });
+    qs.questions = questions; // 配列順＝並び順（order を再採番）
+    return json(res, 200, qs);
+  }
+  // slice-19: 設問セット取得（順序・形式・必須・役割タグを返す）。
+  if ((m = hit('GET', /^\/question-sets\/([^/]+)$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const qs = questionSets.get(m[1]);
+    return qs ? json(res, 200, qs) : json(res, 404, { error: 'not_found' });
+  }
+  // slice-19 AC-3/AC-4: 公開。ガードレール（必須役割不足）で 422・公開状態に遷移しない。通れば版を上げて published（過去版は不変で残す）。
+  if ((m = hit('POST', /^\/question-sets\/([^/]+)\/publish$/))) {
+    if (!isManager(uid)) return json(res, 403, { error: 'forbidden' });
+    const qs = questionSets.get(m[1]);
+    if (!qs) return json(res, 404, { error: 'not_found' });
+    const missing = missingPublishRoles(qs.questions);
+    if (missing.length) return json(res, 422, { error: 'guardrail_failed', missing_roles: missing }); // 公開拒否・状態不変
+    qs.version = maxPublishedVersion(qs.group_id) + 1; // 版を切る（過去 published 版は別 id で不変・AC-4）
+    qs.status = 'published';
+    return json(res, 200, qs);
   }
 
   // slice-01 AC-1/AC-4: POST /reports

@@ -14,7 +14,14 @@ export function createAdminRouter(deps: { adminController: AdminController }): R
   const { adminController } = deps;
 
   router.get('/staff', (req, res, next) => {
-    const group = typeof req.query.group === 'string' ? req.query.group : undefined;
+    // ?group は単一値。複数指定（配列）は先頭を採る（オラクル searchParams.get('group') と同義・parity）。
+    const rawGroup = req.query.group;
+    const group =
+      typeof rawGroup === 'string'
+        ? rawGroup
+        : Array.isArray(rawGroup) && typeof rawGroup[0] === 'string'
+          ? rawGroup[0]
+          : undefined;
     void adminController
       .listStaff(authUserId(req), group)
       .then((r) => res.status(r.status).json(r.body))

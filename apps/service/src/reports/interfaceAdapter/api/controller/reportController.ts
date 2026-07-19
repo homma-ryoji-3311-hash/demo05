@@ -8,6 +8,7 @@ import type { LoadOwnedReportUseCase } from '../../../use-case/loadOwnedReport.j
 import type { GetPreviousReportUseCase } from '../../../use-case/getPreviousReport.js';
 import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
 import type { LinkedProject, LinkedIncident } from '../../../domain/interface/projectLinker.js';
+import type { MasterSummaryView } from '../../../domain/interface/masterReconciler.js';
 
 /** 前回参照のレスポンス形（slice-05）。前回が無ければ previous:null。 */
 export interface PreviousResponse {
@@ -118,15 +119,23 @@ export class ReportController {
     userId: string,
     id: string,
     body: unknown,
-  ): Promise<{ status: number; body: ReportResponse & { projects: LinkedProject[]; incidents: LinkedIncident[] } }> {
+  ): Promise<{
+    status: number;
+    body: ReportResponse & {
+      projects: LinkedProject[];
+      incidents: LinkedIncident[];
+      master_summaries: MasterSummaryView[];
+    };
+  }> {
     const b = (body ?? {}) as Record<string, unknown>;
-    // slice-11: body.projects を確定へ渡す。レスポンスに紐づいた projects/incidents を含める。
-    const { report, projects, incidents } = await this.confirmReport.execute({
+    // slice-11: body.projects を確定へ渡し紐づいた projects/incidents を返す。
+    // slice-12: 突合結果 master_summaries も同一レスポンスに含める（確定に同期・ADR-0019）。
+    const { report, projects, incidents, masterSummaries } = await this.confirmReport.execute({
       userId,
       id,
       summary: b.summary,
       projects: b.projects,
     });
-    return { status: 200, body: { ...toResponse(report), projects, incidents } };
+    return { status: 200, body: { ...toResponse(report), projects, incidents, master_summaries: masterSummaries } };
   }
 }

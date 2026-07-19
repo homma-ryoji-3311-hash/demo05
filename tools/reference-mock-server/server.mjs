@@ -202,6 +202,11 @@ const resolveProject = (userId, projectKey, clientName) => {
   return p;
 };
 
+// slice-12: 突合済みマスター元データ（MASTER_SUMMARIES）。案件×期間で upsert・状態は incident key で最新に上書き。
+// 生報告ログ（reports）は不変で、更新はこの別レイヤーにのみ起きる（§3.4・AC-3）。合成のみ。
+const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
+const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -399,21 +404,43 @@ const server = createServer(async (req, res) => {
         }
       }
     }
-    // 検証通過後に mutate。案件キーで既存/新規を解決し（AC-1/AC-3）、インシデントを案件へ紐づける（AC-2）。
+    // 検証通過後に mutate。案件キーで既存/新規を解決し（slice-11 AC-1/AC-3）、インシデントを案件へ紐づける（AC-2）。
+    // 続けて slice-12: 案件×期間で MASTER_SUMMARIES を upsert（増分・incident key で最新上書き・AC-1/2/4）＝確定に同期（AC-5）。
+    const period = periodOf(rep.report_date);
     const linkedProjects = [];
     const linkedIncidents = [];
+    const touchedSummaries = [];
     for (const p of inputProjects) {
       const proj = resolveProject(uid, p.project_key, p.client_name);
       const incs = p.incidents ?? [];
       for (const inc of incs) linkedIncidents.push({ project_id: proj.id, status: inc.status });
       if (incs.length) proj.status = incs[incs.length - 1].status; // PROJECT.status = 最新インシデント status
       linkedProjects.push({ id: proj.id, project_key: proj.project_key, client_name: proj.client_name, status: proj.status });
+
+      // slice-12 突合: (user_id, project_id, period) で upsert。既存 summary に新報告のみをマージ（全再処理でない・AC-1）。
+      const skey = `${uid}|${proj.id}|${period}`;
+      const existing = masterSummaries.get(skey);
+      const byKey = new Map((existing?.summary.incidents ?? []).map((i) => [i.key, i])); // incident key で dedup
+      incs.forEach((inc, idx) => {
+        const k = inc.key ?? `INC-${idx + 1}`; // key 省略時は位置キー
+        byKey.set(k, { key: k, status: inc.status }); // 同一 key は最新 status で上書き（追記でない・AC-2）
+      });
+      const row = {
+        user_id: uid,
+        project_id: proj.id,
+        period,
+        summary: { incidents: [...byKey.values()] },
+        reconciled_at: new Date().toISOString(),
+      };
+      masterSummaries.set(skey, row); // 同一キーは重複行を作らず上書き（冪等・AC-4）
+      touchedSummaries.push(row);
     }
     rep.confirmed_summary = body.summary ?? rep.ai_summary_json ?? summarize(rep.raw_text);
     rep.status = 'confirmed';
     rep.projects = linkedProjects;
     rep.incidents = linkedIncidents;
-    return json(res, 200, rep);
+    // master_summaries は MASTER_SUMMARIES に upsert 済み。レスポンスにのみ含め、rep には保存しない（REPORTS 不変・AC-3）。
+    return json(res, 200, { ...rep, master_summaries: touchedSummaries });
   }
 
   // slice-04 AC-2/AC-3, slice-06 AC-4: GET /reports/:id（詳細・所有権）

@@ -1,0 +1,1 @@
+export { SoftQuestions } from './SoftQuestions';

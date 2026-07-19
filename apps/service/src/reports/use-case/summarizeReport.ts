@@ -1,6 +1,7 @@
 import type { StructuredSummary } from '../domain/model/report.js';
 import type { ReportRepositoryInterface } from '../domain/interface/reportRepository.js';
 import type { SummarizerInterface } from '../domain/interface/summarizer.js';
+import { applySoftAnswersToSummary } from '../domain/model/softAnswers.js';
 import { ReportForbiddenError, ReportNotFoundError, SummarizerFailedError } from '../domain/error/reportErrors.js';
 
 /**
@@ -27,8 +28,11 @@ export class SummarizeReportUseCase {
       throw new SummarizerFailedError(input.id, { cause });
     }
 
-    report.applySummary(summary);
+    // slice-20: ソフト設問を反映（AI活用→スキル）。雑感は Summarizer へ渡さず出力にも出さない・スコア化なし。
+    // soft_answers が無ければ summary は不変（既存 slice-02 の挙動を壊さない）。
+    const withSoft = applySoftAnswersToSummary(summary, report.softAnswers);
+    report.applySummary(withSoft);
     await this.repo.save(report);
-    return summary;
+    return withSoft;
   }
 }

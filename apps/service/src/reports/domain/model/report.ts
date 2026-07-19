@@ -10,6 +10,18 @@ export interface StructuredSummary {
   skills: string[];
 }
 
+/**
+ * ソフト設問の回答（slice-20）。AI活用→スキル、課題/所感→内部非反映、雑感→AI/シート/共有から完全除外（L2）。
+ * zakkan_visibility: limited=最小ロール閲覧可・private=本人のみ。スコア・診断は一切持たない（AC-4）。
+ */
+export interface SoftAnswers {
+  ai_use: string | null;
+  issue: string | null;
+  shokan: string | null;
+  zakkan: string | null;
+  zakkan_visibility: 'limited' | 'private';
+}
+
 /** 永続化・復元用のプレーン表現（camelCase）。HTTP レスポンス形はコントローラで snake_case に変換する。 */
 export interface ReportProps {
   id: string;
@@ -19,6 +31,8 @@ export interface ReportProps {
   status: ReportStatus;
   aiSummaryJson: StructuredSummary | null;
   confirmedSummary: StructuredSummary | null;
+  /** ソフト設問の回答（slice-20）。未回答は null。雑感は AI/シート/共有へ出さない。 */
+  softAnswers?: SoftAnswers | null;
 }
 
 /** 確定要約の4カテゴリ。順序はレスポンス・検証の両方で使う。 */
@@ -55,6 +69,7 @@ export class ReportEntity {
     private _status: ReportStatus,
     private _aiSummaryJson: StructuredSummary | null,
     private _confirmedSummary: StructuredSummary | null,
+    private _softAnswers: SoftAnswers | null = null,
   ) {}
 
   get id(): string {
@@ -74,6 +89,15 @@ export class ReportEntity {
   }
   get aiSummaryJson(): StructuredSummary | null {
     return this._aiSummaryJson;
+  }
+  /** ソフト設問の回答（slice-20）。雑感の閲覧・要約反映は use-case/domain が制御する。 */
+  get softAnswers(): SoftAnswers | null {
+    return this._softAnswers;
+  }
+
+  /** ソフト設問の回答を保存する（slice-20・本人のみ・認可は use-case が担う）。 */
+  setSoftAnswers(soft: SoftAnswers): void {
+    this._softAnswers = soft;
   }
 
   /** 新規下書き。report_date のビジネスルール（必須）を検証する（→ 422）。 */
@@ -95,6 +119,7 @@ export class ReportEntity {
       props.status,
       props.aiSummaryJson,
       props.confirmedSummary,
+      props.softAnswers ?? null,
     );
   }
 
@@ -136,6 +161,7 @@ export class ReportEntity {
       status: this._status,
       aiSummaryJson: this._aiSummaryJson,
       confirmedSummary: this._confirmedSummary,
+      softAnswers: this._softAnswers,
     };
   }
 }

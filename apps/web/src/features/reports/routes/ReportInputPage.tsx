@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { fetchDraft, createDraft, updateDraft, fetchPrevious, fetchReports, type ReportDto, type SummaryDto } from '../api/reportsApi';
 import { VoiceInput } from '../components/VoiceInput';
+import { SoftQuestions } from '../components/SoftQuestions';
 
 /** 前回参照の表示データ（前回本文＋前回確定要約）。無ければ null。 */
 type Previous = { raw_text: string; summary: SummaryDto | null } | null;
@@ -110,6 +111,8 @@ export function ReportInputPage() {
       />
       {/* 音声入力（slice-18）。本文欄と併用し、STT 結果は取り込み操作で本文末尾へ追記する（自動確定しない）。 */}
       <VoiceInput onImport={appendVoice} />
+      {/* ソフト設問（slice-20）。AI活用・課題・所感・雑感。雑感は AI/シート/共有から除外・スコア UI なし。 */}
+      <SoftQuestions reportId={reportId} />
       <p role="status" aria-live="polite" className="mt-2 text-sm text-gray-600">
         {saved ? '下書きを保存しました' : '自動保存が有効です'}
       </p>

@@ -57,6 +57,22 @@ export function createReportRouter(deps: { reportController: ReportController })
       .catch(next);
   });
 
+  // slice-20: ソフト設問回答の保存（本人のみ）。雑感・スコアは応答に出さない。
+  router.post('/:id/soft-answers', (req, res, next) => {
+    void reportController
+      .softAnswers(authUserId(req), req.params.id, req.body)
+      .then((r) => res.status(r.status).json(r.body))
+      .catch(next);
+  });
+
+  // slice-20: 雑感の閲覧（最小ロール・private は本人のみ・担当外は 403）。/:id より前・具体パス優先。
+  router.get('/:id/zakkan', (req, res, next) => {
+    void reportController
+      .zakkan(authUserId(req), req.params.id)
+      .then((r) => res.status(r.status).json(r.body))
+      .catch(next);
+  });
+
   // GET /reports/:id/previous は前回参照（slice-05）。/:id より前・具体パス優先。
   router.get('/:id/previous', (req, res, next) => {
     void reportController

@@ -17,6 +17,23 @@ export async function fetchReports(): Promise<ReportDto[]> {
   return res.reports;
 }
 
+/** ソフト設問回答（slice-20・送信形）。雑感はサーバで AI/シートから完全除外・応答には出さない。 */
+export interface SoftAnswersInput {
+  ai_use?: string;
+  issue?: string;
+  shokan?: string;
+  zakkan?: string;
+  zakkan_visibility?: 'limited' | 'private';
+}
+
+/** ソフト設問回答を保存（slice-20・本人のみ）。応答は { id, saved } のみ（雑感・スコアは返らない）。 */
+export async function saveSoftAnswers(id: string, data: SoftAnswersInput): Promise<{ id: string; saved: boolean }> {
+  return apiFetch<{ id: string; saved: boolean }>(`/reports/${encodeURIComponent(id)}/soft-answers`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 /** 履行状況の5ステータス（slice-15・backend と等価）。 */
 export type FulfillmentStatus = 'submitted' | 'late' | 'missing' | 'unreported_flagged' | 'absent';
 

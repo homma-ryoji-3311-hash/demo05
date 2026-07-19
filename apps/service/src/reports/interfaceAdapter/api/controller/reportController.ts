@@ -6,6 +6,8 @@ import type { ConfirmReportUseCase } from '../../../use-case/confirmReport.js';
 import type { ListReportsUseCase } from '../../../use-case/listReports.js';
 import type { LoadOwnedReportUseCase } from '../../../use-case/loadOwnedReport.js';
 import type { GetPreviousReportUseCase } from '../../../use-case/getPreviousReport.js';
+import type { SaveSoftAnswersUseCase } from '../../../use-case/saveSoftAnswers.js';
+import type { ViewZakkanUseCase } from '../../../use-case/viewZakkan.js';
 import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
 import type { LinkedProject, LinkedIncident } from '../../../domain/interface/projectLinker.js';
 import type { MasterSummaryView } from '../../../domain/interface/masterReconciler.js';
@@ -53,6 +55,8 @@ export class ReportController {
     private readonly listReports: ListReportsUseCase,
     private readonly loadOwnedReport: LoadOwnedReportUseCase,
     private readonly getPreviousReport: GetPreviousReportUseCase,
+    private readonly saveSoftAnswers: SaveSoftAnswersUseCase,
+    private readonly viewZakkan: ViewZakkanUseCase,
   ) {}
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
@@ -108,6 +112,30 @@ export class ReportController {
   async summarize(userId: string, id: string): Promise<{ status: number; body: StructuredSummary }> {
     const summary = await this.summarizeReport.execute({ userId, id });
     return { status: 200, body: summary };
+  }
+
+  /**
+   * ソフト設問回答の保存（slice-20・本人のみ）。レスポンスに雑感・スコアを出さない（AC-2/AC-4）。
+   */
+  async softAnswers(
+    userId: string,
+    id: string,
+    body: unknown,
+  ): Promise<{ status: number; body: { id: string; saved: true } }> {
+    const result = await this.saveSoftAnswers.execute({ userId, id, body });
+    return { status: 200, body: result };
+  }
+
+  /**
+   * 雑感の閲覧（slice-20 AC-3）。最小ロール（本人・担当 manager・メンタルケア担当）のみ・private は本人のみ。
+   * 担当外・非公開は use-case が ReportForbiddenError（403）。スコア・診断は返さない（AC-4）。
+   */
+  async zakkan(
+    viewerId: string,
+    id: string,
+  ): Promise<{ status: number; body: { zakkan: string | null; visibility: string } }> {
+    const result = await this.viewZakkan.execute({ viewerId, id });
+    return { status: 200, body: result };
   }
 
   /**

@@ -20,6 +20,9 @@ import { ConfirmReportUseCase } from './reports/use-case/confirmReport.js';
 import { ListReportsUseCase } from './reports/use-case/listReports.js';
 import { LoadOwnedReportUseCase } from './reports/use-case/loadOwnedReport.js';
 import { GetPreviousReportUseCase } from './reports/use-case/getPreviousReport.js';
+import { SaveSoftAnswersUseCase } from './reports/use-case/saveSoftAnswers.js';
+import { ViewZakkanUseCase } from './reports/use-case/viewZakkan.js';
+import type { ZakkanViewerPolicyInterface } from './reports/domain/interface/zakkanViewerPolicy.js';
 import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
@@ -205,6 +208,16 @@ export function createApp(deps: AppDependencies): express.Express {
   };
 
   const greetingController = new GreetingController(new GetGreetingUseCase(greetingRepository, generateId, clock));
+  // slice-20: 雑感の閲覧最小ロール（メンタルケア担当 or 担当 manager）を解決するポリシー。
+  // 担当関係は合成 seed（staff01 → mgr01）。auth を薄くラップして role を読む（他の read ポートと同型）。
+  const assignedManagers = new Map<string, string[]>([['staff01', ['mgr01']]]);
+  const zakkanViewerPolicy: ZakkanViewerPolicyInterface = {
+    canViewLimited: async (viewerId, staffId) => {
+      const viewer = await userRepository.findById(viewerId);
+      if (viewer?.role === 'mental_care') return true;
+      return (assignedManagers.get(staffId) ?? []).includes(viewerId);
+    },
+  };
   const reportController = new ReportController(
     new CreateDraftUseCase(reportRepository, generateId),
     new UpdateDraftUseCase(reportRepository),
@@ -214,6 +227,8 @@ export function createApp(deps: AppDependencies): express.Express {
     new ListReportsUseCase(reportRepository),
     new LoadOwnedReportUseCase(reportRepository),
     new GetPreviousReportUseCase(reportRepository),
+    new SaveSoftAnswersUseCase(reportRepository),
+    new ViewZakkanUseCase(reportRepository, zakkanViewerPolicy),
   );
   // slice-17: /me が承認状態を返すための seam。auth 本体はロールしか持たないので、承認状態は
   // staff-approval の staffAccountRepository から読む（レコードなし＝active・オラクル `status ?? 'active'` と同義）。

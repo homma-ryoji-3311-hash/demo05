@@ -45,6 +45,7 @@
 | slice-25 | report-history-appeal | 15 | スタッフ本人の履行状況の異議申立て手段（誤記録への申立て・phase2-design §6.9 未決④） | 6+ | overview |
 | slice-26 | ai-followup-advanced | 23,24 | AI追加質問の後続（管理画面でのカテゴリ付替・定型質問の高度運用・チーム別基準・データモデル精緻化・report-quality §12.5 の5,6） | 6+ | overview |
 | slice-27 | fix-template-manage-aria | 10 | 回帰: slice-10 の `TemplateManagePage` の `<ul aria-label>` が form テストの `getByLabel(/テンプレート\|アップロード\|ファイル/)` に二重マッチ→strict mode 違反（工程9b の総合 E2E で検出）。aria-label を `/版\|履歴/` は満たしつつ衝突語を外す1行修正 | 2 | regression-of-slice-10 |
+| slice-28 | fix-report-list-double-list | 15 | 回帰: slice-15 が `/reports` に履行状況の `<ul role=list>` を追加→slice-04 `reports/list.ui` の `getByRole('list')` が二重マッチ→strict mode 違反（工程9b の総合 E2E で検出・ADR-0010）。履行状況を非 list 要素（`<div>`）で描画し業務報告一覧の list role を1つに保つ数行修正（テキスト表示は維持・slice-15 UI-AC 不変） | 4 | regression-of-slice-15 |
 
 > 由来の値：`overview`（基本設計由来）／`split-of-slice-NN`（分割）／`regression-of-slice-NN`（回帰・ADR-0014）。
 > **slice-24〜26 は 2026-07-15 の凍結解除（overview §8.5）で生じたスコープアウト先の backlog。** 番号は不変・append-only。仕様表は後続フェーズで起こす。

@@ -27,6 +27,9 @@ const users = new Map([
   ['staff02', { id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' }],
   // slice-10: テンプレート管理は manager 権限。合成グループの管理者（下流 backend は同一 seed を持つこと）。
   ['mgr01', { id: 'mgr01', email: 'mgr01@example.test', name: '管理花子', role: 'manager', group_id: 'grp_synth_eng' }],
+  // slice-20: 雑感の閲覧最小ロール検証用。care01=メンタルケア担当・mgr_other=担当外 manager（雑感を見られない）。
+  ['care01', { id: 'care01', email: 'care01@example.test', name: 'ケア担当', role: 'mental_care' }],
+  ['mgr_other', { id: 'mgr_other', email: 'mgrother@example.test', name: '別管理', role: 'manager', group_id: 'grp_other' }],
 ]);
 let seq = 0;
 const nextId = () => `r_${String(++seq).padStart(4, '0')}`;
@@ -207,6 +210,19 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-20: ソフト設問・ウェルビーイング。雑感(zakkan)は AI 変換・シート反映から完全除外・閲覧限定・スコア化禁止。
+// 閲覧の最小ロール: 本人・担当 manager・メンタルケア担当（主/副の区別は slice-24）。雑感は任意入力・本人非公開可。
+const assignedManagers = new Map([['staff01', ['mgr01']]]); // staff -> 担当 manager（合成・最小ロール。mgr_other は非担当）
+const isAssignedManager = (viewerId, staffId) => (assignedManagers.get(staffId) ?? []).includes(viewerId);
+// ソフト設問を要約へ反映する（AI活用→スキル／課題・所感→内部・非反映／雑感→Summarizer へ一切渡さない・AC-1/AC-2）。
+// 雑感は本関数の入力に含めない（＝AI 変換対象外）。スコア・診断・点数は一切生成しない（AC-4）。
+const applySoftAnswersToSummary = (base, soft) => {
+  if (!soft) return base;
+  const skills = [...base.skills];
+  if (typeof soft.ai_use === 'string' && soft.ai_use.length) skills.push(`AI活用: ${soft.ai_use}`); // AI活用はスキルへ反映
+  return { ...base, skills }; // 課題(issue)・所感(shokan)は内部・非反映／雑感(zakkan)は参照しない
+};
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -383,8 +399,41 @@ const server = createServer(async (req, res) => {
     if (typeof rep.raw_text === 'string' && rep.raw_text.includes('__FAIL__')) {
       return json(res, 502, { error: 'summarizer_failed' }); // AC-4: 下書きは draft のまま保持
     }
-    rep.ai_summary_json = summarize(rep.raw_text);
+    // slice-20: ソフト設問を反映（AI活用→スキル）。雑感は Summarizer へ渡さず出力にも出さない（AC-1/AC-2）。スコア化なし（AC-4）。
+    rep.ai_summary_json = applySoftAnswersToSummary(summarize(rep.raw_text), rep.soft_answers);
     return json(res, 200, rep.ai_summary_json);
+  }
+
+  // slice-20 AC-1〜4: ソフト設問の回答を保存（本人のみ）。雑感は任意入力・本人非公開可（zakkan_visibility）。
+  if ((m = hit('POST', /^\/reports\/([^/]+)\/soft-answers$/))) {
+    const rep = reports.get(m[1]);
+    if (!rep) return json(res, 404, { error: 'not_found' });
+    if (rep.user_id !== uid) return json(res, 403, { error: 'forbidden' });
+    const body = await readBody(req);
+    if (body === null) return json(res, 422, { error: 'validation_failed' });
+    rep.soft_answers = {
+      ai_use: typeof body.ai_use === 'string' ? body.ai_use : null, // スキル抽出へ
+      issue: typeof body.issue === 'string' ? body.issue : null, // 内部・シート非反映
+      shokan: typeof body.shokan === 'string' ? body.shokan : null, // 内部・シート非反映
+      zakkan: typeof body.zakkan === 'string' ? body.zakkan : null, // AI 変換対象外・閲覧限定
+      zakkan_visibility: body.zakkan_visibility === 'private' ? 'private' : 'limited', // 既定は限定閲覧
+    };
+    // レスポンスに雑感やスコアを出さない（AC-2/AC-4）。保存できたことだけ返す。
+    return json(res, 200, { id: rep.id, saved: true });
+  }
+
+  // slice-20 AC-3: 雑感の閲覧。最小ロール（本人・担当 manager・メンタルケア担当）のみ。private は本人のみ。それ以外は 403。
+  if ((m = hit('GET', /^\/reports\/([^/]+)\/zakkan$/))) {
+    const rep = reports.get(m[1]);
+    if (!rep) return json(res, 404, { error: 'not_found' });
+    const soft = rep.soft_answers ?? {};
+    const vis = soft.zakkan_visibility ?? 'limited';
+    const isOwner = rep.user_id === uid;
+    const role = users.get(uid)?.role;
+    const minRole = role === 'mental_care' || isAssignedManager(uid, rep.user_id);
+    const canView = isOwner || (vis !== 'private' && minRole); // private は本人のみ・限定は最小ロール
+    if (!canView) return json(res, 403, { error: 'forbidden' });
+    return json(res, 200, { zakkan: soft.zakkan ?? null, visibility: vis }); // スコア・診断は含めない（AC-4）
   }
 
   // slice-03: POST /reports/:id/confirm

@@ -6,6 +6,7 @@ import { HomePage } from './features/home';
 import { SkillSheetListPage } from './features/skillsheets';
 import { TemplateManagePage } from './features/templates';
 import { AdminConsolePage } from './features/admin';
+import { NotificationSettingsPage } from './features/notifications';
 
 // 静的パス（/reports/new）は動的パス（/reports/:id）より優先される（react-router のランク付け）。
 // 保護ルート（reports 配下）は RequireAuth で包む。未ログインは /login へ誘導（slice-06 UI-AC）。
@@ -59,6 +60,15 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <AdminConsolePage />
+      </RequireAuth>
+    ),
+  },
+  {
+    // S9 通知設定（slice-13）。保護ルート＝未ログインは /login へ（RequireAuth）。
+    path: '/notification-settings',
+    element: (
+      <RequireAuth>
+        <NotificationSettingsPage />
       </RequireAuth>
     ),
   },

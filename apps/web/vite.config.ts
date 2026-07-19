@@ -75,6 +75,17 @@ export default defineConfig({
           }
         },
       },
+      // S9 通知設定 API（/notification-settings・slice-13）。SPA のルート /notification-settings（page.goto）と
+      // 衝突するため、ページ遷移（HTML 要求）は index.html にフォールバックし、fetch（JSON）だけを backend へ転送する。
+      '/notification-settings': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        bypass(req) {
+          if (req.method === 'GET' && req.headers.accept?.includes('text/html')) {
+            return '/index.html';
+          }
+        },
+      },
     },
   },
 });

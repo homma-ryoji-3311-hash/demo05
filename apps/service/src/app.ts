@@ -65,6 +65,12 @@ import type { MasterSummaryRepositoryInterface } from './master-summaries/domain
 import type { MasterReconcilerInterface } from './reports/domain/interface/masterReconciler.js';
 import { ReconcileMasterUseCase } from './master-summaries/use-case/reconcileMaster.js';
 import { InMemoryMasterSummaryRepository } from './master-summaries/infra/repository/inMemoryMasterSummaryRepository.js';
+import type { AdminStaffReaderInterface } from './admin/domain/interface/adminStaffReader.js';
+import type { ManagerContextReaderInterface } from './admin/domain/interface/managerContextReader.js';
+import { ListAdminStaffUseCase } from './admin/use-case/listAdminStaff.js';
+import { AdminController } from './admin/interfaceAdapter/api/controller/adminController.js';
+import { createAdminRouter } from './admin/interfaceAdapter/api/route/adminRoute.js';
+import { InMemoryAdminStaffReader } from './admin/infra/repository/inMemoryAdminStaffReader.js';
 import type { NotificationSettingsRepositoryInterface } from './notifications/domain/interface/notificationSettingsRepository.js';
 import type { UserTimezoneReaderInterface } from './notifications/domain/interface/userTimezoneReader.js';
 import { GetNotificationSettingsUseCase } from './notifications/use-case/getNotificationSettings.js';
@@ -93,6 +99,8 @@ export interface AppDependencies {
   projectRepository?: ProjectRepositoryInterface;
   /** 省略時は空のインメモリ実装（slice-12・突合済みマスター）。 */
   masterSummaryRepository?: MasterSummaryRepositoryInterface;
+  /** 省略時は seed 済み（合成スタッフ台帳 G1/G3/G2）のインメモリ実装（slice-14・オラクル parity）。 */
+  adminStaffReader?: AdminStaffReaderInterface;
   /** 省略時は空のインメモリ実装（slice-13・通知設定・user_id 単位）。 */
   notificationSettingsRepository?: NotificationSettingsRepositoryInterface;
   generateId?: () => string;
@@ -114,6 +122,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const templateRepository = deps.templateRepository ?? defaultTemplateRepository();
   const projectRepository = deps.projectRepository ?? defaultProjectRepository();
   const masterSummaryRepository = deps.masterSummaryRepository ?? new InMemoryMasterSummaryRepository();
+  const adminStaffReader = deps.adminStaffReader ?? new InMemoryAdminStaffReader();
   const notificationSettingsRepository =
     deps.notificationSettingsRepository ?? new InMemoryNotificationSettingsRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
@@ -178,6 +187,17 @@ export function createApp(deps: AppDependencies): express.Express {
     new ActivateTemplateUseCase(templateRepository, userContextReader),
     new ListTemplatesUseCase(templateRepository, userContextReader),
   );
+  // 管理者コンソールの認可 read ポート（slice-14）。auth を薄くラップし role・担当グループ（複数）を読む。
+  // groups は user.groups 優先・無ければ group_id を単一要素として扱う（オラクル managerGroups と同義・home の read ポートと同型）。
+  const managerContextReader: ManagerContextReaderInterface = {
+    findByUser: async (userId) => {
+      const u = await userRepository.findById(userId);
+      if (!u) return null;
+      const groups = u.groups ?? (u.group_id ? [u.group_id] : []);
+      return { role: u.role, groups };
+    },
+  };
+  const adminController = new AdminController(new ListAdminStaffUseCase(adminStaffReader, managerContextReader));
   // 通知設定の TZ read ポート（slice-13）。auth 本体には触れず userRepository を薄くラップして timezone だけを読む。
   // 未設定ユーザーは既定 Asia/Tokyo（オラクル userTz の `?? 'Asia/Tokyo'` と同義。合成のみ・home の read ポートと同型）。
   const userTimezoneReader: UserTimezoneReaderInterface = {
@@ -212,6 +232,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/skill-sheets', createSkillSheetRouter({ skillSheetController }));
   // templates は route の authUserId が 401 を担保（slice-10 AC-4）。manager 認可 403 は use-case（id 参照より先）。
   app.use('/templates', createTemplateRouter({ templateController }));
+  // admin は route の authUserId が 401 を担保（slice-14 AC-4）。manager 認可 403 は use-case（可視範囲より先）。
+  app.use('/admin', createAdminRouter({ adminController }));
   // notification-settings は route の authUserId が 401 を担保（slice-13 AC-4）。設定は user_id 単位（本人のみ）。
   app.use('/notification-settings', createNotificationSettingsRouter({ notificationSettingsController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));

@@ -4,7 +4,18 @@
 // UI ルートは API パスに合わせる（既存規約: /skill-sheets・/templates と同様に /admin/staff）。
 import { test, expect } from '@playwright/test';
 
+const UI_BASE = process.env.ACCEPTANCE_UI_BASE_URL ?? 'http://localhost:5173';
+
 test.describe('slice-14 admin-console [ui] — S8 管理者コンソール/スタッフ一覧', () => {
+  // S8 は manager 専用画面 → ui セッションを担当グループ G1/G3 を持つ管理者 admin01 に上書きする
+  // （staff01 既定では 403 でデータが出ない。slice-10 の mgr01 上書き前例と同型・工程4 翻訳欠陥修正）。
+  test.use({
+    storageState: {
+      cookies: [],
+      origins: [{ origin: UI_BASE, localStorage: [{ name: 'session', value: 'admin01' }] }],
+    },
+  });
+
   // UI-AC: 担当グループがタブとして並ぶ
   test('担当グループがタブとして表示される', async ({ page }) => {
     await page.goto('/admin/staff');

@@ -2,6 +2,8 @@ import type { GenerateSkillSheetUseCase } from '../../../use-case/generateSkillS
 import type { ListSkillSheetsUseCase } from '../../../use-case/listSkillSheets.js';
 import type { GetSkillSheetForDownloadUseCase } from '../../../use-case/getSkillSheetForDownload.js';
 import type { GetSkillSheetPreviewUseCase } from '../../../use-case/getSkillSheetPreview.js';
+import type { BulkGenerateSkillSheetsUseCase } from '../../../use-case/bulkGenerateSkillSheets.js';
+import type { BulkResult } from '../../../domain/model/bulkManifest.js';
 import type { SkillSheetContent, SkillSheetEntity } from '../../../domain/model/skillSheet.js';
 
 /** HTML レスポンス形。route が content-type を text/html にして送出する。 */
@@ -65,7 +67,18 @@ export class SkillSheetController {
     private readonly listSkillSheets: ListSkillSheetsUseCase,
     private readonly getSkillSheetForDownload: GetSkillSheetForDownloadUseCase,
     private readonly getSkillSheetPreview: GetSkillSheetPreviewUseCase,
+    private readonly bulkGenerate: BulkGenerateSkillSheetsUseCase,
   ) {}
+
+  /**
+   * 一括生成（slice-21・manager のみ）。客先/部署/グループで絞り込み、entries/skipped/manifest（ZIP 構造）を返す。
+   * staff は use-case が 403（AC-3）。
+   */
+  async bulk(userId: string, body: unknown): Promise<{ status: number; body: BulkResult }> {
+    const b = (body ?? {}) as Record<string, unknown>;
+    const result = await this.bulkGenerate.execute({ userId, client: b.client, dept: b.dept, group: b.group });
+    return { status: 200, body: result };
+  }
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: SkillSheetResponse }> {
     const b = (body ?? {}) as Record<string, unknown>;

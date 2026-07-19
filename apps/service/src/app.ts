@@ -52,6 +52,14 @@ import {
   seedSkillSheets,
 } from './skillsheets/infra/repository/inMemorySkillSheetRepository.js';
 import { FakeSheetParaphraser } from './skillsheets/infra/paraphraser/fakeSheetParaphraser.js';
+import type { StaffRosterReaderInterface } from './skillsheets/domain/interface/staffRosterReader.js';
+import { BulkGenerateSkillSheetsUseCase } from './skillsheets/use-case/bulkGenerateSkillSheets.js';
+import { SkillSheetZipPackager } from './skillsheets/infra/zip/skillSheetZipPackager.js';
+import { createBulkSkillSheetRouter } from './skillsheets/interfaceAdapter/api/route/skillSheetRoute.js';
+import {
+  InMemoryStaffRosterReader,
+  seedStaffRoster,
+} from './skillsheets/infra/repository/inMemoryStaffRosterReader.js';
 import type { TemplateRepositoryInterface } from './templates/domain/interface/templateRepository.js';
 import type { UserContextReaderInterface } from './templates/domain/interface/userContextReader.js';
 import { UploadTemplateUseCase } from './templates/use-case/uploadTemplate.js';
@@ -163,6 +171,8 @@ export interface AppDependencies {
   staffAccountRepository?: StaffAccountRepositoryInterface;
   /** 省略時は seed 済み（qs_seed_v1）のインメモリ実装（slice-19・設問テンプレート・版管理）。 */
   questionSetRepository?: QuestionSetRepositoryInterface;
+  /** 省略時は seed 済み（bs_1/bs_2/bs_3）のインメモリ台帳（slice-21・一括ダウンロードの対象決定）。 */
+  staffRosterReader?: StaffRosterReaderInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -192,6 +202,7 @@ export function createApp(deps: AppDependencies): express.Express {
   // slice-17: 承認状態ストア（deny-by-default／承認の源泉）。承認は super admin（approverContextReader）が判定。
   const staffAccountRepository = deps.staffAccountRepository ?? defaultStaffAccountRepository();
   const questionSetRepository = deps.questionSetRepository ?? defaultQuestionSetRepository();
+  const staffRosterReader = deps.staffRosterReader ?? new InMemoryStaffRosterReader(seedStaffRoster());
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -271,11 +282,20 @@ export function createApp(deps: AppDependencies): express.Express {
     },
   };
   const homeController = new HomeController(new GetHomeUseCase(reportSummaryReader));
+  // slice-21: 一括生成の呼び出し元コンテキスト（manager 判定＋担当グループ）。auth を薄くラップして role/groups を読む。
+  const bulkCallerReader = {
+    resolve: async (userId: string): Promise<{ isManager: boolean; groups: string[] }> => {
+      const u = await userRepository.findById(userId);
+      const groups = u?.groups ?? (u?.group_id ? [u.group_id] : []);
+      return { isManager: u?.role === 'manager', groups };
+    },
+  };
   const skillSheetController = new SkillSheetController(
     new GenerateSkillSheetUseCase(masterReader, sheetParaphraser, skillSheetRepository, generateId, clock),
     new ListSkillSheetsUseCase(skillSheetRepository),
     new GetSkillSheetForDownloadUseCase(skillSheetRepository),
     new GetSkillSheetPreviewUseCase(skillSheetRepository),
+    new BulkGenerateSkillSheetsUseCase(staffRosterReader, bulkCallerReader, new SkillSheetZipPackager(), clock),
   );
   // templates の認可 read ポート（slice-10 §3「use-case で user.role を read」）。auth 本体には触れず、
   // userRepository を薄くラップして role・group_id だけを読む（home の reportSummaryReader と同型）。
@@ -359,6 +379,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/admin', denyPending, createAdminReportStatusRouter({ reportStatusController }));
   // slice-17 承認待ち一覧・承認（super admin のみ）。/admin 配下・deny 後に use-case が super admin 認可を判定。
   app.use('/admin', denyPending, createStaffApprovalRouter({ staffApprovalController }));
+  // slice-21 スキルシート一括生成（manager のみ）。/admin/skill-sheets/bulk・deny 後に use-case が manager 認可を判定。
+  app.use('/admin', denyPending, createBulkSkillSheetRouter({ skillSheetController }));
   // notification-settings は route の authUserId が 401 を担保（slice-13 AC-4）。設定は user_id 単位（本人のみ）。
   app.use('/notification-settings', denyPending, createNotificationSettingsRouter({ notificationSettingsController }));
   // slice-19 設問テンプレート（manager のみ）。authUserId が 401・manager 認可 403 は use-case・ガードレール 422。

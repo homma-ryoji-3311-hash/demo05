@@ -62,4 +62,12 @@ export function seedUsers(repo: InMemoryUserRepository): void {
     role: 'manager',
     group_id: 'grp_other',
   });
+  // slice-21: 一括ダウンロードの担当 manager（grp_engineer/grp_sales 担当）。オラクル server.mjs の bulk_mgr と同一 seed。
+  void repo.upsert({
+    id: 'bulk_mgr',
+    email: 'bulkmgr@example.test',
+    name: '一括管理',
+    role: 'manager',
+    groups: ['grp_engineer', 'grp_sales'],
+  });
 }

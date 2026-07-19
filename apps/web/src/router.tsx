@@ -3,7 +3,7 @@ import { GreetingPage } from './features/greeting';
 import { ReportDetailPage, ReportInputPage, ReportListPage, ReportReviewPage } from './features/reports';
 import { LoginPage, RequireAuth } from './features/auth';
 import { HomePage } from './features/home';
-import { SkillSheetListPage } from './features/skillsheets';
+import { SkillSheetListPage, BulkDownloadPage } from './features/skillsheets';
 import { TemplateManagePage } from './features/templates';
 import { AdminConsolePage } from './features/admin';
 import { NotificationSettingsPage } from './features/notifications';
@@ -89,6 +89,15 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <QuestionSetEditorPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    // S11 スキルシート一括ダウンロード（slice-21・manager）。保護ルート＝未ログインは /login へ（RequireAuth）。
+    path: '/bulk-download',
+    element: (
+      <RequireAuth>
+        <BulkDownloadPage />
       </RequireAuth>
     ),
   },

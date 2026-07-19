@@ -17,6 +17,24 @@ export async function fetchReports(): Promise<ReportDto[]> {
   return res.reports;
 }
 
+/** 履行状況の5ステータス（slice-15・backend と等価）。 */
+export type FulfillmentStatus = 'submitted' | 'late' | 'missing' | 'unreported_flagged' | 'absent';
+
+/** 履行状況の機会（本人の read-only ビュー・slice-15 AC-6）。 */
+export interface ReportStatusOpportunityDto {
+  id: string;
+  staff_id: string;
+  date: string;
+  deadline_utc: string;
+  status: FulfillmentStatus;
+}
+
+/** 本人の履行状況（5ステータス）を read-only で取得する（slice-15 AC-6）。 */
+export async function fetchMyReportStatus(): Promise<ReportStatusOpportunityDto[]> {
+  const res = await apiFetch<{ opportunities: ReportStatusOpportunityDto[] }>('/me/report-status');
+  return res.opportunities;
+}
+
 /** 報告1件の詳細（slice-04 AC-2）。他人の報告は backend が 403 にする＝apiFetch が例外にする。 */
 export async function fetchReport(id: string): Promise<ReportDto> {
   return apiFetch<ReportDto>(`/reports/${id}`);

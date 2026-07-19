@@ -38,4 +38,12 @@ export function seedUsers(repo: InMemoryUserRepository): void {
     role: 'manager',
     group_id: 'grp_synth_eng',
   });
+  // slice-14: 管理者コンソールの担当管理者。担当グループ G1/G3（複数）。オラクル server.mjs の admin01 と同一 seed。
+  void repo.upsert({
+    id: 'admin01',
+    email: 'admin01@example.test',
+    name: '管理太郎',
+    role: 'manager',
+    groups: ['G1', 'G3'],
+  });
 }

@@ -11,7 +11,10 @@ const UI_BASE = process.env.ACCEPTANCE_UI_BASE_URL ?? 'http://localhost:5173';
 export default defineConfig({
   testDir: '.',
   fullyParallel: true,
-  reporter: [['list']],
+  // list は人間向け。json は Stop ゲート（.claude/hooks/stop-gate.sh）が現スライスの spec に
+  // 帰属判定するために常設する。出力は acceptance/test-results/results.json（config 相対）。
+  // これで全スイート実行でも未実装スライスの赤で完了がブロックされない（ADR-0018）。
+  reporter: [['list'], ['json', { outputFile: 'test-results/results.json' }]],
   projects: [
     {
       name: 'api',

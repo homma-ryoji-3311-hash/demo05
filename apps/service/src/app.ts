@@ -92,6 +92,16 @@ import { UpdateNotificationSettingsUseCase } from './notifications/use-case/upda
 import { NotificationSettingsController } from './notifications/interfaceAdapter/api/controller/notificationSettingsController.js';
 import { createNotificationSettingsRouter } from './notifications/interfaceAdapter/api/route/notificationSettingsRoute.js';
 import { InMemoryNotificationSettingsRepository } from './notifications/infra/repository/inMemoryNotificationSettingsRepository.js';
+import type { ReminderTargetReaderInterface } from './reminders/domain/interface/reminderTargetReader.js';
+import type { NotifierInterface } from './reminders/domain/interface/notifier.js';
+import { RunReminderJobUseCase } from './reminders/use-case/runReminderJob.js';
+import { ReminderController } from './reminders/interfaceAdapter/api/controller/reminderController.js';
+import { createReminderRouter } from './reminders/interfaceAdapter/api/route/reminderRoute.js';
+import {
+  InMemoryReminderTargetReader,
+  seedReminderTargets,
+} from './reminders/infra/repository/inMemoryReminderTargetReader.js';
+import { FakeNotifier } from './reminders/infra/notifier/fakeNotifier.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -119,6 +129,10 @@ export interface AppDependencies {
   adminStaffReader?: AdminStaffReaderInterface;
   /** 省略時は空のインメモリ実装（slice-13・通知設定・user_id 単位）。 */
   notificationSettingsRepository?: NotificationSettingsRepositoryInterface;
+  /** 省略時は seed 済み（ru_tokyo/ru_sg/ru_done/ru_noslack）のインメモリ抽出源（slice-16・オラクル parity）。 */
+  reminderTargetReader?: ReminderTargetReaderInterface;
+  /** 省略時は決定的フェイク notifier（実送信ゼロ・sink 捕捉）。実 Slack/メールはここに注入（slice-16 PM 決定）。 */
+  notifier?: NotifierInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -142,6 +156,9 @@ export function createApp(deps: AppDependencies): express.Express {
   const reportStatusRepository = deps.reportStatusRepository ?? defaultReportStatusRepository();
   const notificationSettingsRepository =
     deps.notificationSettingsRepository ?? new InMemoryNotificationSettingsRepository();
+  // slice-16: 抽出源は seed 済みインメモリ（オラクル parity）、notifier は既定でフェイク（実送信ゼロ）。
+  const reminderTargetReader = deps.reminderTargetReader ?? new InMemoryReminderTargetReader(seedReminderTargets());
+  const notifier = deps.notifier ?? new FakeNotifier();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -238,6 +255,8 @@ export function createApp(deps: AppDependencies): express.Express {
     new GetNotificationSettingsUseCase(notificationSettingsRepository, userTimezoneReader),
     new UpdateNotificationSettingsUseCase(notificationSettingsRepository, userTimezoneReader),
   );
+  // slice-16 リマインドジョブ。抽出（reader）→ 通知抽象化層（notifier）へ dispatch。実送信は notifier の背後。
+  const reminderController = new ReminderController(new RunReminderJobUseCase(reminderTargetReader, notifier));
 
   const app = express();
   app.use(requestContext());
@@ -268,6 +287,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/admin', createAdminReportStatusRouter({ reportStatusController }));
   // notification-settings は route の authUserId が 401 を担保（slice-13 AC-4）。設定は user_id 単位（本人のみ）。
   app.use('/notification-settings', createNotificationSettingsRouter({ notificationSettingsController }));
+  // slice-16 リマインドジョブ trigger（背景ジョブ・システム起点につき per-user 認可なし・対象は reader が抽出）。
+  app.use('/jobs', createReminderRouter({ reminderController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
   app.use(errorHandler);
   return app;

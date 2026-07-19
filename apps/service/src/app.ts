@@ -71,6 +71,20 @@ import { ListAdminStaffUseCase } from './admin/use-case/listAdminStaff.js';
 import { AdminController } from './admin/interfaceAdapter/api/controller/adminController.js';
 import { createAdminRouter } from './admin/interfaceAdapter/api/route/adminRoute.js';
 import { InMemoryAdminStaffReader } from './admin/infra/repository/inMemoryAdminStaffReader.js';
+import type { ReportStatusRepositoryInterface } from './report-status/domain/interface/reportStatusRepository.js';
+import type { ActorContextReaderInterface } from './report-status/domain/interface/actorContextReader.js';
+import { SetReportCycleUseCase, GetReportCycleUseCase } from './report-status/use-case/setReportCycle.js';
+import { ViewMyReportStatusUseCase } from './report-status/use-case/viewMyReportStatus.js';
+import { FlagMissingUseCase, ApproveAbsenceUseCase } from './report-status/use-case/mutateReportStatus.js';
+import { ReportStatusController } from './report-status/interfaceAdapter/api/controller/reportStatusController.js';
+import {
+  createAdminReportStatusRouter,
+  createMyReportStatusRouter,
+} from './report-status/interfaceAdapter/api/route/reportStatusRoute.js';
+import {
+  InMemoryReportStatusRepository,
+  seedReportStatus,
+} from './report-status/infra/repository/inMemoryReportStatusRepository.js';
 import type { NotificationSettingsRepositoryInterface } from './notifications/domain/interface/notificationSettingsRepository.js';
 import type { UserTimezoneReaderInterface } from './notifications/domain/interface/userTimezoneReader.js';
 import { GetNotificationSettingsUseCase } from './notifications/use-case/getNotificationSettings.js';
@@ -99,6 +113,8 @@ export interface AppDependencies {
   projectRepository?: ProjectRepositoryInterface;
   /** 省略時は空のインメモリ実装（slice-12・突合済みマスター）。 */
   masterSummaryRepository?: MasterSummaryRepositoryInterface;
+  /** 省略時は seed 済み（staff01 の5機会）のインメモリ実装（slice-15・オラクル parity）。 */
+  reportStatusRepository?: ReportStatusRepositoryInterface;
   /** 省略時は seed 済み（合成スタッフ台帳 G1/G3/G2）のインメモリ実装（slice-14・オラクル parity）。 */
   adminStaffReader?: AdminStaffReaderInterface;
   /** 省略時は空のインメモリ実装（slice-13・通知設定・user_id 単位）。 */
@@ -123,6 +139,7 @@ export function createApp(deps: AppDependencies): express.Express {
   const projectRepository = deps.projectRepository ?? defaultProjectRepository();
   const masterSummaryRepository = deps.masterSummaryRepository ?? new InMemoryMasterSummaryRepository();
   const adminStaffReader = deps.adminStaffReader ?? new InMemoryAdminStaffReader();
+  const reportStatusRepository = deps.reportStatusRepository ?? defaultReportStatusRepository();
   const notificationSettingsRepository =
     deps.notificationSettingsRepository ?? new InMemoryNotificationSettingsRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
@@ -198,6 +215,17 @@ export function createApp(deps: AppDependencies): express.Express {
     },
   };
   const adminController = new AdminController(new ListAdminStaffUseCase(adminStaffReader, managerContextReader));
+  // 報告状況の操作ロール read ポート（slice-15）。auth を薄くラップし manager かだけを読む（本人は read-only・AC-6）。
+  const actorContextReader: ActorContextReaderInterface = {
+    isManager: async (userId) => (await userRepository.findById(userId))?.role === 'manager',
+  };
+  const reportStatusController = new ReportStatusController(
+    new SetReportCycleUseCase(reportStatusRepository, actorContextReader),
+    new GetReportCycleUseCase(reportStatusRepository, actorContextReader),
+    new ViewMyReportStatusUseCase(reportStatusRepository),
+    new FlagMissingUseCase(reportStatusRepository, actorContextReader),
+    new ApproveAbsenceUseCase(reportStatusRepository, actorContextReader),
+  );
   // 通知設定の TZ read ポート（slice-13）。auth 本体には触れず userRepository を薄くラップして timezone だけを読む。
   // 未設定ユーザーは既定 Asia/Tokyo（オラクル userTz の `?? 'Asia/Tokyo'` と同義。合成のみ・home の read ポートと同型）。
   const userTimezoneReader: UserTimezoneReaderInterface = {
@@ -224,6 +252,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/auth', createAuthRouter({ authController }));
   // 保護: 未認証は requireAuth が 401（AC-3）。
   app.use('/me', requireAuth, createMeRouter({ authController }));
+  // 本人の履行状況 read-only（slice-15 AC-6）。/me 配下・authUserId が 401 を担保。
+  app.use('/me', requireAuth, createMyReportStatusRouter({ reportStatusController }));
   // reports は各ハンドラが authUserId で 401 を担保（slice-04）。所有権 403 は use-case（AC-4）。
   app.use('/reports', createReportRouter({ reportController }));
   // 保護: home ハンドラが authUserId で 401 を担保（slice-07）。集約は read ポート経由でのみ reports を読む。
@@ -234,6 +264,8 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/templates', createTemplateRouter({ templateController }));
   // admin は route の authUserId が 401 を担保（slice-14 AC-4）。manager 認可 403 は use-case（可視範囲より先）。
   app.use('/admin', createAdminRouter({ adminController }));
+  // report-cycles / report-status 操作（slice-15・manager のみ）。/admin 配下・authUserId が 401 を担保。
+  app.use('/admin', createAdminReportStatusRouter({ reportStatusController }));
   // notification-settings は route の authUserId が 401 を担保（slice-13 AC-4）。設定は user_id 単位（本人のみ）。
   app.use('/notification-settings', createNotificationSettingsRouter({ notificationSettingsController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
@@ -272,6 +304,16 @@ function defaultProjectRepository(): ProjectRepositoryInterface {
 function defaultTemplateRepository(): TemplateRepositoryInterface {
   const repo = new InMemoryTemplateRepository();
   seedTemplates(repo);
+  return repo;
+}
+
+/**
+ * reportStatusRepository 未注入時の既定（seed 済みインメモリ・slice-15）。
+ * 機会 seed（staff01 の opp_sub/late/missing/flag/absent）はオラクル(server.mjs opportunities)と同一＝5 ステータス遷移の観測源。
+ */
+function defaultReportStatusRepository(): ReportStatusRepositoryInterface {
+  const repo = new InMemoryReportStatusRepository();
+  seedReportStatus(repo);
   return repo;
 }
 

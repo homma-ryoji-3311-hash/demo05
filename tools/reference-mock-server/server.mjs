@@ -207,6 +207,17 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-23: AI 追加質問。要約後に薄い項目（ルール検出＝決定的）へ一度だけ追加質問。回答は本文へ追記→要約作り直し。
+// 【決定】のみ AC 化（しきい値・優先順位・データモデル等の精緻化は slice-26 へ段階送り）。degrade は必須ブロックを発動しない。
+const FOLLOWUP_TARGET_CATEGORIES = ['issues']; // 対象カテゴリの仮値（単一基準・slice-26 で精緻化）
+const FOLLOWUP_MIN_LEN = 5; // 「薄い」とみなす最小文字数の仮値（ゆるめ・slice-26 で調整）
+// ルール検出（決定的）: 対象カテゴリが空 or 全要素が極端に短い → 薄い。Gemini 自動判定は主役にしない。
+const isThin = (summary) =>
+  FOLLOWUP_TARGET_CATEGORIES.some((c) => {
+    const v = summary?.[c];
+    return !Array.isArray(v) || v.length === 0 || v.every((x) => String(x ?? '').trim().length < FOLLOWUP_MIN_LEN);
+  });
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -336,6 +347,41 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { templates: list });
   }
 
+  // slice-23 AC-1/AC-4/AC-5: 要約後の薄い項目へ一度だけ追加質問を生成・提示する（ルール検出＝決定的）。二重質問しない。
+  if ((m = hit('POST', /^\/reports\/([^/]+)\/follow-up$/))) {
+    const rep = reports.get(m[1]);
+    if (!rep) return json(res, 404, { error: 'not_found' });
+    if (rep.user_id !== uid) return json(res, 403, { error: 'forbidden' });
+    if (rep.status === 'confirmed') return json(res, 409, { error: 'confirmed_immutable' }); // 確定後は質問しない（原則6）
+    if (rep.follow_up && rep.follow_up.state !== 'none') return json(res, 200, rep.follow_up); // 一度きり・二重質問しない（AC-5）
+    if (typeof rep.raw_text === 'string' && rep.raw_text.includes('__FOLLOWUP_DEGRADE__')) {
+      rep.follow_up = { state: 'degraded' }; // 質問自体が出せなかった（AC-4）→ 必須ブロックを発動しない
+      return json(res, 200, rep.follow_up);
+    }
+    if (!isThin(rep.ai_summary_json)) {
+      rep.follow_up = { state: 'not_needed' }; // 薄くない＝質問不要
+      return json(res, 200, rep.follow_up);
+    }
+    const body = await readBody(req);
+    rep.follow_up = { state: 'asked', required: body?.required === true, question: 'issues（課題）について、具体的な内容を教えてください。' };
+    return json(res, 200, rep.follow_up); // 薄い対象カテゴリへ一度だけ生成・提示（AC-1）
+  }
+
+  // slice-23 AC-2: 追加質問への回答を本文へ追記し、要約を作り直す（下書きのまま・確定済みは変えない）。
+  if ((m = hit('POST', /^\/reports\/([^/]+)\/follow-up\/answer$/))) {
+    const rep = reports.get(m[1]);
+    if (!rep) return json(res, 404, { error: 'not_found' });
+    if (rep.user_id !== uid) return json(res, 403, { error: 'forbidden' });
+    if (rep.status === 'confirmed') return json(res, 409, { error: 'confirmed_immutable' }); // 確定済みは不変（原則6）
+    const body = await readBody(req);
+    if (rep.follow_up?.state !== 'asked') return json(res, 422, { error: 'no_pending_follow_up' });
+    if (typeof body?.answer !== 'string' || !body.answer.length) return json(res, 422, { error: 'validation_failed', field: 'answer' });
+    rep.raw_text = `${rep.raw_text}\n${body.answer}`; // 回答は raw_text へ追記（確定前のみ）
+    rep.ai_summary_json = summarize(rep.raw_text); // 本文追記後に要約を作り直す
+    rep.follow_up = { ...rep.follow_up, state: 'answered' };
+    return json(res, 200, { id: rep.id, status: rep.status, raw_text: rep.raw_text, ai_summary_json: rep.ai_summary_json });
+  }
+
   // slice-01 AC-1/AC-4: POST /reports
   if (hit('POST', /^\/reports$/)) {
     const body = await readBody(req);
@@ -395,6 +441,10 @@ const server = createServer(async (req, res) => {
     if (rep.status === 'confirmed') return json(res, 409, { error: 'already_confirmed' }); // AC-3
     const body = await readBody(req);
     if (body === null) return json(res, 422, { error: 'validation_failed' });
+    // slice-23 AC-3/AC-4: 必須の追加質問が「提示されたのに未回答」なら確定ブロック（422）。任意・回答済み・degrade は通す。
+    if (rep.follow_up?.state === 'asked' && rep.follow_up.required) {
+      return json(res, 422, { error: 'follow_up_required', question: rep.follow_up.question }); // 答えるまで確定できない
+    }
     // slice-11: 対応案件の紐づけ＋インシデント状態。バリデーション（不正 status は 422）を mutate より先に行う（AC-4・原子性）。
     const inputProjects = Array.isArray(body.projects) ? body.projects : [];
     for (const p of inputProjects) {

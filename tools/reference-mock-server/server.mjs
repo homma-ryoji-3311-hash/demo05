@@ -27,6 +27,8 @@ const users = new Map([
   ['staff02', { id: 'staff02', email: 'staff02@example.test', name: 'テスト花子', role: 'staff' }],
   // slice-10: テンプレート管理は manager 権限。合成グループの管理者（下流 backend は同一 seed を持つこと）。
   ['mgr01', { id: 'mgr01', email: 'mgr01@example.test', name: '管理花子', role: 'manager', group_id: 'grp_synth_eng' }],
+  // slice-14: 複数グループ(G1/G3)を担当する管理者。担当外(G2)は一覧に出さない（AC-2）。groups は配列（mgr01 の group_id とは別系統）。
+  ['admin01', { id: 'admin01', email: 'admin01@example.test', name: '管理太郎', role: 'manager', groups: ['G1', 'G3'] }],
 ]);
 let seq = 0;
 const nextId = () => `r_${String(++seq).padStart(4, '0')}`;
@@ -207,6 +209,20 @@ const resolveProject = (userId, projectKey, clientName) => {
 const masterSummaries = new Map(); // `${user_id}|${project_id}|${period}` -> { user_id, project_id, period, summary, reconciled_at }
 const periodOf = (reportDate) => String(reportDate ?? '').slice(0, 7); // report_date の YYYY-MM（AC 契約 Q3）
 
+// slice-14: 管理者コンソール用の合成スタッフ台帳（グループ単位の担当・表示列）。可視範囲はバックエンドで強制（AC-2）。
+// 報告状況は §3.9 の二値（reported / not_reported）まで。5 ステータスは slice-15、操作の実挙動は slice-09/21。
+const managerGroups = (uid) => { const u = users.get(uid); return u?.groups ?? (u?.group_id ? [u.group_id] : []); };
+const adminStaff = [
+  { id: 's_g1_a', name: 'テスト 太郎', group_id: 'G1', client_name: 'クライアントA', last_report_at: '2026-07-14T09:00:00Z', report_status: 'reported', has_latest_sheet: true },
+  { id: 's_g1_b', name: 'テスト 花子', group_id: 'G1', client_name: 'クライアントB', last_report_at: null, report_status: 'not_reported', has_latest_sheet: false },
+  { id: 's_g3_a', name: 'テスト 次郎', group_id: 'G3', client_name: 'クライアントC', last_report_at: '2026-07-13T08:00:00Z', report_status: 'reported', has_latest_sheet: false },
+  { id: 's_g2_a', name: 'テスト 三郎', group_id: 'G2', client_name: 'クライアントD', last_report_at: '2026-07-12T07:00:00Z', report_status: 'reported', has_latest_sheet: true }, // 担当外 G2（G1/G3 管理者には出さない・AC-2）
+];
+const adminStaffView = (s) => ({
+  id: s.id, name: s.name, group_id: s.group_id, client_name: s.client_name,
+  last_report_at: s.last_report_at, report_status: s.report_status, has_latest_sheet: s.has_latest_sheet,
+});
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -334,6 +350,18 @@ const server = createServer(async (req, res) => {
       .filter((t) => t.group_id === group_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
     return json(res, 200, { templates: list });
+  }
+
+  // slice-14 AC-1/2/3/4: GET /admin/staff（manager 専用・担当グループのスタッフのみ・?group でタブ絞り込み）
+  if (hit('GET', /^\/admin\/staff$/)) {
+    const u = users.get(uid);
+    if (!u || u.role !== 'manager') return json(res, 403, { error: 'forbidden' }); // staff ロールは 403（AC-4）
+    const myGroups = managerGroups(uid);
+    const requested = url.searchParams.get('group');
+    // ?group 指定は担当グループと交差（担当外指定は空・AC-3）。未指定は担当グループ全部（AC-1）。
+    const scope = requested ? (myGroups.includes(requested) ? [requested] : []) : myGroups;
+    const staff = adminStaff.filter((s) => scope.includes(s.group_id)).map(adminStaffView); // 担当外(G2)はバックエンドで除外（AC-2）
+    return json(res, 200, { groups: myGroups, staff });
   }
 
   // slice-01 AC-1/AC-4: POST /reports

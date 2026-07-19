@@ -22,6 +22,15 @@ export interface SoftAnswers {
   zakkan_visibility: 'limited' | 'private';
 }
 
+/** AI 追加質問の状態（slice-23）。asked=提示済み・answered=回答済み・degraded=提示できず・not_needed=薄くない。一度きり。 */
+export type FollowUpState = 'none' | 'asked' | 'answered' | 'degraded' | 'not_needed';
+export interface FollowUp {
+  state: FollowUpState;
+  /** 必須の追加質問か（必須かつ提示済み未回答なら確定ブロック・AC-3）。 */
+  required?: boolean;
+  question?: string;
+}
+
 /** 永続化・復元用のプレーン表現（camelCase）。HTTP レスポンス形はコントローラで snake_case に変換する。 */
 export interface ReportProps {
   id: string;
@@ -33,6 +42,8 @@ export interface ReportProps {
   confirmedSummary: StructuredSummary | null;
   /** ソフト設問の回答（slice-20）。未回答は null。雑感は AI/シート/共有へ出さない。 */
   softAnswers?: SoftAnswers | null;
+  /** AI 追加質問の状態（slice-23）。未生成は null（=none 相当）。 */
+  followUp?: FollowUp | null;
 }
 
 /** 確定要約の4カテゴリ。順序はレスポンス・検証の両方で使う。 */
@@ -70,6 +81,7 @@ export class ReportEntity {
     private _aiSummaryJson: StructuredSummary | null,
     private _confirmedSummary: StructuredSummary | null,
     private _softAnswers: SoftAnswers | null = null,
+    private _followUp: FollowUp | null = null,
   ) {}
 
   get id(): string {
@@ -100,6 +112,16 @@ export class ReportEntity {
     this._softAnswers = soft;
   }
 
+  /** AI 追加質問の状態（slice-23）。一度きり・必須ブロックの判定は use-case/confirm が読む。 */
+  get followUp(): FollowUp | null {
+    return this._followUp;
+  }
+
+  /** AI 追加質問の状態を保存する（slice-23・確定前のみ・認可は use-case が担う）。 */
+  setFollowUp(followUp: FollowUp): void {
+    this._followUp = followUp;
+  }
+
   /** 新規下書き。report_date のビジネスルール（必須）を検証する（→ 422）。 */
   static createDraft(params: { id: string; userId: string; reportDate: unknown; rawText?: unknown }): ReportEntity {
     if (typeof params.reportDate !== 'string' || params.reportDate.trim() === '') {
@@ -120,6 +142,7 @@ export class ReportEntity {
       props.aiSummaryJson,
       props.confirmedSummary,
       props.softAnswers ?? null,
+      props.followUp ?? null,
     );
   }
 
@@ -162,6 +185,7 @@ export class ReportEntity {
       aiSummaryJson: this._aiSummaryJson,
       confirmedSummary: this._confirmedSummary,
       softAnswers: this._softAnswers,
+      followUp: this._followUp,
     };
   }
 }

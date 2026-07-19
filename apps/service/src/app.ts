@@ -23,6 +23,8 @@ import { GetPreviousReportUseCase } from './reports/use-case/getPreviousReport.j
 import { SaveSoftAnswersUseCase } from './reports/use-case/saveSoftAnswers.js';
 import { ViewZakkanUseCase } from './reports/use-case/viewZakkan.js';
 import type { ZakkanViewerPolicyInterface } from './reports/domain/interface/zakkanViewerPolicy.js';
+import { RequestFollowUpUseCase } from './reports/use-case/requestFollowUp.js';
+import { AnswerFollowUpUseCase } from './reports/use-case/answerFollowUp.js';
 import { ReportController } from './reports/interfaceAdapter/api/controller/reportController.js';
 import { createReportRouter } from './reports/interfaceAdapter/api/route/reportRoute.js';
 import { InMemoryReportRepository, seedReports } from './reports/infra/repository/inMemoryReportRepository.js';
@@ -259,6 +261,9 @@ export function createApp(deps: AppDependencies): express.Express {
     new GetPreviousReportUseCase(reportRepository),
     new SaveSoftAnswersUseCase(reportRepository),
     new ViewZakkanUseCase(reportRepository, zakkanViewerPolicy),
+    // slice-23: 対象カテゴリ・しきい値は設定値として注入（slice-26 で調整可能）。
+    new RequestFollowUpUseCase(reportRepository, { targetCategories: ['issues'], minLen: 5 }),
+    new AnswerFollowUpUseCase(reportRepository, summarizer),
   );
   // slice-17: /me が承認状態を返すための seam。auth 本体はロールしか持たないので、承認状態は
   // staff-approval の staffAccountRepository から読む（レコードなし＝active・オラクル `status ?? 'active'` と同義）。

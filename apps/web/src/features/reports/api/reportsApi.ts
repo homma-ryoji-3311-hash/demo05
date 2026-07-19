@@ -34,6 +34,29 @@ export async function saveSoftAnswers(id: string, data: SoftAnswersInput): Promi
   });
 }
 
+/** AI 追加質問の状態（slice-23・backend と等価）。 */
+export interface FollowUpDto {
+  state: string;
+  required?: boolean;
+  question?: string;
+}
+
+/** 追加質問を生成・提示（slice-23・一度きり・薄い項目のみ）。既に提示済みなら同一を返す。 */
+export async function requestFollowUp(id: string): Promise<FollowUpDto> {
+  return apiFetch<FollowUpDto>(`/reports/${encodeURIComponent(id)}/follow-up`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+/** 追加質問へ回答（slice-23・本文へ追記＋要約作り直し・下書きのまま）。 */
+export async function answerFollowUp(id: string, answer: string): Promise<{ raw_text: string; status: string }> {
+  return apiFetch<{ raw_text: string; status: string }>(`/reports/${encodeURIComponent(id)}/follow-up/answer`, {
+    method: 'POST',
+    body: JSON.stringify({ answer }),
+  });
+}
+
 /** 履行状況の5ステータス（slice-15・backend と等価）。 */
 export type FulfillmentStatus = 'submitted' | 'late' | 'missing' | 'unreported_flagged' | 'absent';
 

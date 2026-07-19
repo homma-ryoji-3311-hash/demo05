@@ -8,7 +8,9 @@ import type { LoadOwnedReportUseCase } from '../../../use-case/loadOwnedReport.j
 import type { GetPreviousReportUseCase } from '../../../use-case/getPreviousReport.js';
 import type { SaveSoftAnswersUseCase } from '../../../use-case/saveSoftAnswers.js';
 import type { ViewZakkanUseCase } from '../../../use-case/viewZakkan.js';
-import type { ReportEntity, StructuredSummary } from '../../../domain/model/report.js';
+import type { RequestFollowUpUseCase } from '../../../use-case/requestFollowUp.js';
+import type { AnswerFollowUpUseCase } from '../../../use-case/answerFollowUp.js';
+import type { ReportEntity, StructuredSummary, FollowUp } from '../../../domain/model/report.js';
 import type { LinkedProject, LinkedIncident } from '../../../domain/interface/projectLinker.js';
 import type { MasterSummaryView } from '../../../domain/interface/masterReconciler.js';
 
@@ -57,7 +59,30 @@ export class ReportController {
     private readonly getPreviousReport: GetPreviousReportUseCase,
     private readonly saveSoftAnswers: SaveSoftAnswersUseCase,
     private readonly viewZakkan: ViewZakkanUseCase,
+    private readonly requestFollowUp: RequestFollowUpUseCase,
+    private readonly answerFollowUp: AnswerFollowUpUseCase,
   ) {}
+
+  /** 追加質問の生成・提示（slice-23・薄い項目へ一度きり）。 */
+  async followUp(userId: string, id: string, body: unknown): Promise<{ status: number; body: FollowUp }> {
+    const b = (body ?? {}) as Record<string, unknown>;
+    const fu = await this.requestFollowUp.execute({ userId, id, required: b.required === true });
+    return { status: 200, body: fu };
+  }
+
+  /** 追加質問への回答（slice-23・本文追記＋要約作り直し・下書きのまま）。 */
+  async answerFollowUpQuestion(
+    userId: string,
+    id: string,
+    body: unknown,
+  ): Promise<{
+    status: number;
+    body: { id: string; status: string; raw_text: string; ai_summary_json: StructuredSummary | null };
+  }> {
+    const b = (body ?? {}) as Record<string, unknown>;
+    const result = await this.answerFollowUp.execute({ userId, id, answer: b.answer });
+    return { status: 200, body: result };
+  }
 
   async create(userId: string, body: unknown): Promise<{ status: number; body: ReportResponse }> {
     const b = (body ?? {}) as Record<string, unknown>;

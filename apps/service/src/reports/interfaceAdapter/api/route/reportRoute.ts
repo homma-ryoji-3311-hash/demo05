@@ -73,6 +73,20 @@ export function createReportRouter(deps: { reportController: ReportController })
       .catch(next);
   });
 
+  // slice-23: 追加質問の生成・回答（要約後の薄い項目へ一度きり）。/:id より前・具体パス優先。
+  router.post('/:id/follow-up/answer', (req, res, next) => {
+    void reportController
+      .answerFollowUpQuestion(authUserId(req), req.params.id, req.body)
+      .then((r) => res.status(r.status).json(r.body))
+      .catch(next);
+  });
+  router.post('/:id/follow-up', (req, res, next) => {
+    void reportController
+      .followUp(authUserId(req), req.params.id, req.body)
+      .then((r) => res.status(r.status).json(r.body))
+      .catch(next);
+  });
+
   // GET /reports/:id/previous は前回参照（slice-05）。/:id より前・具体パス優先。
   router.get('/:id/previous', (req, res, next) => {
     void reportController

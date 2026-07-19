@@ -7,6 +7,7 @@ import { SkillSheetListPage } from './features/skillsheets';
 import { TemplateManagePage } from './features/templates';
 import { AdminConsolePage } from './features/admin';
 import { NotificationSettingsPage } from './features/notifications';
+import { ApprovalConsolePage, PendingApprovalPage } from './features/staff-approval';
 
 // 静的パス（/reports/new）は動的パス（/reports/:id）より優先される（react-router のランク付け）。
 // 保護ルート（reports 配下）は RequireAuth で包む。未ログインは /login へ誘導（slice-06 UI-AC）。
@@ -55,11 +56,29 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    // S12 承認・担当紐付けコンソール（slice-17・super admin）。/admin/staff より具体的なので優先マッチ。
+    path: '/admin/staff/pending',
+    element: (
+      <RequireAuth>
+        <ApprovalConsolePage />
+      </RequireAuth>
+    ),
+  },
+  {
     // S8 管理者コンソール/スタッフ一覧（slice-14・manager）。保護ルート＝未ログインは /login へ（RequireAuth）。
     path: '/admin/staff',
     element: (
       <RequireAuth>
         <AdminConsolePage />
+      </RequireAuth>
+    ),
+  },
+  {
+    // 未承認スタッフの承認待ち画面（slice-17）。deny-by-default 中は自分の状態のみ read-only 参照。
+    path: '/pending',
+    element: (
+      <RequireAuth>
+        <PendingApprovalPage />
       </RequireAuth>
     ),
   },

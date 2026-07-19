@@ -46,4 +46,10 @@ export function seedUsers(repo: InMemoryUserRepository): void {
     role: 'manager',
     groups: ['G1', 'G3'],
   });
+  // slice-17: 承認主体＝super admin（承認・承認待ち一覧の可視範囲）。オラクル server.mjs の super01 と同一 seed。
+  void repo.upsert({ id: 'super01', email: 'super01@example.test', name: '統括管理', role: 'super_admin' });
+  // slice-17: 新規スタッフ（deny-by-default・承認待ち）。承認状態そのものは staffAccountRepository が源泉（オラクル parity）。
+  void repo.upsert({ id: 'pend_ac1', email: 'newstaff1@example.test', name: '新人一', role: 'staff' });
+  void repo.upsert({ id: 'pend_ac2', email: 'newstaff2@example.test', name: '新人二', role: 'staff' });
+  void repo.upsert({ id: 'pend_ac3', email: 'newstaff3@example.test', name: '新人三', role: 'staff' });
 }

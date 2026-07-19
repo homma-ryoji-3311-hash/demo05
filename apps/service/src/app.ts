@@ -102,6 +102,17 @@ import {
   seedReminderTargets,
 } from './reminders/infra/repository/inMemoryReminderTargetReader.js';
 import { FakeNotifier } from './reminders/infra/notifier/fakeNotifier.js';
+import type { StaffAccountRepositoryInterface } from './staff-approval/domain/interface/staffAccountRepository.js';
+import type { ApproverContextReaderInterface } from './staff-approval/domain/interface/approverContextReader.js';
+import { ListPendingStaffUseCase } from './staff-approval/use-case/listPendingStaff.js';
+import { ApproveStaffUseCase } from './staff-approval/use-case/approveStaff.js';
+import { StaffApprovalController } from './staff-approval/interfaceAdapter/api/controller/staffApprovalController.js';
+import { createStaffApprovalRouter } from './staff-approval/interfaceAdapter/api/route/staffApprovalRoute.js';
+import { denyByDefault } from './staff-approval/interfaceAdapter/api/middleware/denyByDefault.js';
+import {
+  InMemoryStaffAccountRepository,
+  seedStaffAccounts,
+} from './staff-approval/infra/repository/inMemoryStaffAccountRepository.js';
 
 export interface AppDependencies {
   greetingRepository: GreetingRepositoryInterface;
@@ -133,6 +144,8 @@ export interface AppDependencies {
   reminderTargetReader?: ReminderTargetReaderInterface;
   /** 省略時は決定的フェイク notifier（実送信ゼロ・sink 捕捉）。実 Slack/メールはここに注入（slice-16 PM 決定）。 */
   notifier?: NotifierInterface;
+  /** 省略時は seed 済み（pend_ac1/2/3=pending）のインメモリ実装（slice-17・deny-by-default／承認）。 */
+  staffAccountRepository?: StaffAccountRepositoryInterface;
   generateId?: () => string;
   clock?: () => Date;
 }
@@ -159,6 +172,8 @@ export function createApp(deps: AppDependencies): express.Express {
   // slice-16: 抽出源は seed 済みインメモリ（オラクル parity）、notifier は既定でフェイク（実送信ゼロ）。
   const reminderTargetReader = deps.reminderTargetReader ?? new InMemoryReminderTargetReader(seedReminderTargets());
   const notifier = deps.notifier ?? new FakeNotifier();
+  // slice-17: 承認状態ストア（deny-by-default／承認の源泉）。承認は super admin（approverContextReader）が判定。
+  const staffAccountRepository = deps.staffAccountRepository ?? defaultStaffAccountRepository();
   const generateId = deps.generateId ?? (() => randomUUID());
   const clock = deps.clock ?? (() => new Date());
 
@@ -185,9 +200,23 @@ export function createApp(deps: AppDependencies): express.Express {
     new LoadOwnedReportUseCase(reportRepository),
     new GetPreviousReportUseCase(reportRepository),
   );
+  // slice-17: /me が承認状態を返すための seam。auth 本体はロールしか持たないので、承認状態は
+  // staff-approval の staffAccountRepository から読む（レコードなし＝active・オラクル `status ?? 'active'` と同義）。
+  const accountStatusReader = {
+    getStatus: async (userId: string): Promise<string> =>
+      (await staffAccountRepository.findById(userId))?.status ?? 'active',
+  };
   const authController = new AuthController(
     new AuthGoogleCallbackUseCase(userRepository),
-    new GetMeUseCase(userRepository),
+    new GetMeUseCase(userRepository, accountStatusReader),
+  );
+  // slice-17: 承認主体（super admin）を読む cross-module ポート。auth を薄くラップし role を読む（他の read ポートと同型）。
+  const approverContextReader: ApproverContextReaderInterface = {
+    isSuperAdmin: async (userId) => (await userRepository.findById(userId))?.role === 'super_admin',
+  };
+  const staffApprovalController = new StaffApprovalController(
+    new ListPendingStaffUseCase(staffAccountRepository, approverContextReader),
+    new ApproveStaffUseCase(staffAccountRepository, approverContextReader),
   );
   // home の read 専用ポート。reports 本体には触れず、reportRepository を薄くラップして
   // 状態判定に必要な最小ビュー（id・status）だけを読む（依存は read 経由でのみ隔離・slice-07 §3）。
@@ -271,22 +300,27 @@ export function createApp(deps: AppDependencies): express.Express {
   app.use('/auth', createAuthRouter({ authController }));
   // 保護: 未認証は requireAuth が 401（AC-3）。
   app.use('/me', requireAuth, createMeRouter({ authController }));
-  // 本人の履行状況 read-only（slice-15 AC-6）。/me 配下・authUserId が 401 を担保。
+  // 本人の履行状況 read-only（slice-15 AC-6）。/me 配下・authUserId が 401 を担保。deny は掛けない（承認待ちも自分の状態を見られる）。
   app.use('/me', requireAuth, createMyReportStatusRouter({ reportStatusController }));
+  // slice-17 deny-by-default: 未承認（pending）は保護ルート群で 403。requireAuth 後段の共通ガードとして各マウントに1回挿す。
+  // /me・/auth・/api・/jobs（システム起点）には掛けない。承認で active になると通過する（AC-3）。
+  const denyPending = denyByDefault(staffAccountRepository);
   // reports は各ハンドラが authUserId で 401 を担保（slice-04）。所有権 403 は use-case（AC-4）。
-  app.use('/reports', createReportRouter({ reportController }));
+  app.use('/reports', denyPending, createReportRouter({ reportController }));
   // 保護: home ハンドラが authUserId で 401 を担保（slice-07）。集約は read ポート経由でのみ reports を読む。
-  app.use('/home', createHomeRouter({ homeController }));
+  app.use('/home', denyPending, createHomeRouter({ homeController }));
   // skill-sheets は route の authUserId が 401 を担保（slice-08 AC-5）。所有権 403 は use-case。
-  app.use('/skill-sheets', createSkillSheetRouter({ skillSheetController }));
+  app.use('/skill-sheets', denyPending, createSkillSheetRouter({ skillSheetController }));
   // templates は route の authUserId が 401 を担保（slice-10 AC-4）。manager 認可 403 は use-case（id 参照より先）。
-  app.use('/templates', createTemplateRouter({ templateController }));
+  app.use('/templates', denyPending, createTemplateRouter({ templateController }));
   // admin は route の authUserId が 401 を担保（slice-14 AC-4）。manager 認可 403 は use-case（可視範囲より先）。
-  app.use('/admin', createAdminRouter({ adminController }));
+  app.use('/admin', denyPending, createAdminRouter({ adminController }));
   // report-cycles / report-status 操作（slice-15・manager のみ）。/admin 配下・authUserId が 401 を担保。
-  app.use('/admin', createAdminReportStatusRouter({ reportStatusController }));
+  app.use('/admin', denyPending, createAdminReportStatusRouter({ reportStatusController }));
+  // slice-17 承認待ち一覧・承認（super admin のみ）。/admin 配下・deny 後に use-case が super admin 認可を判定。
+  app.use('/admin', denyPending, createStaffApprovalRouter({ staffApprovalController }));
   // notification-settings は route の authUserId が 401 を担保（slice-13 AC-4）。設定は user_id 単位（本人のみ）。
-  app.use('/notification-settings', createNotificationSettingsRouter({ notificationSettingsController }));
+  app.use('/notification-settings', denyPending, createNotificationSettingsRouter({ notificationSettingsController }));
   // slice-16 リマインドジョブ trigger（背景ジョブ・システム起点につき per-user 認可なし・対象は reader が抽出）。
   app.use('/jobs', createReminderRouter({ reminderController }));
   app.use('/api', createDocsRouter([greetingContractGroup]));
@@ -335,6 +369,17 @@ function defaultTemplateRepository(): TemplateRepositoryInterface {
 function defaultReportStatusRepository(): ReportStatusRepositoryInterface {
   const repo = new InMemoryReportStatusRepository();
   seedReportStatus(repo);
+  return repo;
+}
+
+/**
+ * staffAccountRepository 未注入時の既定（seed 済みインメモリ・slice-17）。
+ * seed（pend_ac1/2/3=pending）はオラクル(server.mjs users の status)と同一＝deny-by-default／承認の観測源。
+ * pend_ac1 は never-approve（AC-4 の承認待ち一覧に必ず居る）。既存ユーザーはレコードなし＝active 扱い。
+ */
+function defaultStaffAccountRepository(): StaffAccountRepositoryInterface {
+  const repo = new InMemoryStaffAccountRepository();
+  seedStaffAccounts(repo);
   return repo;
 }
 

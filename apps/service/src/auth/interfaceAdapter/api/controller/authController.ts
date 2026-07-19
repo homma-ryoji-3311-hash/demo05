@@ -8,11 +8,13 @@ export interface CallbackResponse {
   session: string;
 }
 
-/** /me の 200 レスポンス形（id/role/name・受け入れテストが読む3フィールド）。 */
+/** /me の 200 レスポンス形（id/role/name・slice-17 で承認状態 status を追加）。 */
 export interface MeResponse {
   id: string;
   role: string;
   name: string;
+  /** 承認状態（slice-17・pending/active）。承認待ち画面が自分の状態を知る（未設定ユーザーは active）。 */
+  status?: string;
 }
 
 /**
@@ -32,9 +34,11 @@ export class AuthController {
     return { status: 200, body: result };
   }
 
-  /** GET /me（保護）。userId は requireAuth 済みで渡る。 */
+  /** GET /me（保護）。userId は requireAuth 済みで渡る。slice-17: 承認状態 status も返す（あれば）。 */
   async me(userId: string): Promise<{ status: number; body: MeResponse }> {
     const user = await this.getMe.execute({ userId });
-    return { status: 200, body: { id: user.id, role: user.role, name: user.name } };
+    const body: MeResponse = { id: user.id, role: user.role, name: user.name };
+    if (user.status) body.status = user.status;
+    return { status: 200, body };
   }
 }
